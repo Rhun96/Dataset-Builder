@@ -38,6 +38,7 @@ from ui.workers import ImportWorker
 
 
 def guess_role(column: str, sample: list[str]) -> str:
+    import re as _re
     name = (column or "").strip().lower()
     if "запрос" in name or "вопрос" in name or name in ("text", "текст", "query", "prompt"):
         return "main_text"
@@ -53,6 +54,13 @@ def guess_role(column: str, sample: list[str]) -> str:
         return "topic"
     if "источник" in name or name == "source":
         return "kb_ref"
+    # имя ни о чём не говорит — смотрим на примеры: короткие уникальные
+    # значения без пробелов похожи на идентификаторы, а не на мусор
+    vals = [str(v or "").strip() for v in (sample or []) if str(v or "").strip()]
+    if len(vals) >= 2 and len(set(vals)) == len(vals):
+        avg_len = sum(len(v) for v in vals) / len(vals)
+        if avg_len <= 40 and all(_re.fullmatch(r"[\w./:-]+", v) for v in vals):
+            return "ext_id"
     return "extra"
 
 

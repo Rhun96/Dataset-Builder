@@ -17,14 +17,31 @@ def _pool(tmp_path):
 
 def test_propose_takes_rare_fully(tmp_path):
     con = _pool(tmp_path)
-    out = propose(con, BuildProfile(target_size=500, seed=1), GROUP,
-                  base_target=50, rare_min=30)
+    out = propose(con, BuildProfile(target_size=50, seed=1), GROUP, rare_min=30)
     by_val = {q.value: (q.kind, q.amount) for q in out["quotas"]}
     assert by_val["А"][0] == "min" and by_val["А"][1] == 2
     assert by_val["Б"][0] == "percent"
     assert out["target"] == 50 and out["div_threshold"] == 0.85
     assert any("Редкие" in line for line in out["explanation"])
     assert any("рекомендация" in line for line in out["explanation"])
+    con.close()
+
+
+def test_propose_multi_dim_and_pairs(tmp_path):
+    from core.roles import TOPIC  # noqa: E402
+    p = tmp_path / "p.csv"
+    rows = ["т0;Редкий;x", "т1;Редкий;x", "т2;Частый;y", "т3;Частый;y",
+            "т4;Частый;y", "т5;Частый;y"]
+    p.write_text("З;Г;Т\n" + "\n".join(rows) + "\n", encoding="utf-8-sig")
+    con = connect(tmp_path / "ws.sqlite")
+    import_source(con, p, {"З": MAIN, "Г": GROUP, "Т": TOPIC})
+    out = propose(con, BuildProfile(target_size=6, seed=1), GROUP, rare_min=3)
+    kinds = {(q.dim, q.value, q.kind) for q in out["quotas"]}
+    assert (GROUP, "Редкий", "min") in kinds  # редкое значение другой грани
+    assert (TOPIC, "x", "min") in kinds  # редкое значение второй грани
+    assert any(q.dim2 == TOPIC for q in out["quotas"])  # редкое сочетание
+    assert out["target"] == 6
+    assert any("сочетания" in line for line in out["explanation"])
     con.close()
 
 

@@ -21,6 +21,14 @@ def test_guess():
     assert guess_role("Категория", []) == GROUP
     assert guess_role("ID", []) == EXT_ID
     assert guess_role("Непонятное", []) == "extra"
+    # неизвестное имя + короткие уникальные значения без пробелов → ID
+    assert guess_role("Код", ["A1", "A2", "B7"]) == EXT_ID
+    assert guess_role("Код", ["550e8400-e29b-41d4-a716-446655440000",
+                              "6fa459ea-ee8a-3ca4-894e-db77e160355"]) == EXT_ID
+    # тексты с пробелами — не ID, даже если уникальны
+    assert guess_role("Поле", ["Как вернуть товар?", "Где мой заказ?"]) == "extra"
+    # повторяющиеся короткие значения — не ID
+    assert guess_role("Поле", ["да", "нет", "да"]) == "extra"
 
 
 def test_screen_mapping(tmp_path):
