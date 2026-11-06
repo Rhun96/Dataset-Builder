@@ -576,6 +576,10 @@ def test_delete_source(tmp_path):
     assert hasattr(w, 'chk_fileopts') and not w.file_opts.isVisibleTo(w)
     w.chk_fileopts.setChecked(True)
     assert w.file_opts.isVisibleTo(w)
+    w.make_demo_pool()
+    assert (db.parent / "Демо-пул.csv").exists()
+    assert w.tbl_map.rowCount() == 4
+    assert MAIN in w.current_mapping().values()
     w.close()
     con = connect(db)
     srcs = list_sources(con)

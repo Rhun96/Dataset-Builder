@@ -78,6 +78,9 @@ class SourcesScreen(QWidget):
         top = QHBoxLayout()
         self.btn_add = PushButton("Добавить файл…")
         self.btn_add.clicked.connect(self.pick_file)
+        self.btn_demo = PushButton("Демо-пул")
+        self.btn_demo.setToolTip("Создать учебный файл без своих данных")
+        self.btn_demo.clicked.connect(self.make_demo_pool)
         self.btn_reload = PushButton("Обновить")
         self.btn_reload.clicked.connect(self.refresh_sources)
         self.btn_del_src = PushButton("Удалить")
@@ -86,6 +89,7 @@ class SourcesScreen(QWidget):
         self.lbl_ws = QLabel(f"Рабочая папка: {Path(db_path).parent}")
         self.lbl_ws.setProperty("hint", True)
         top.addWidget(self.btn_add)
+        top.addWidget(self.btn_demo)
         top.addWidget(self.btn_reload)
         top.addWidget(self.btn_del_src)
         top.addWidget(self.lbl_ws, 1)
@@ -208,6 +212,19 @@ class SourcesScreen(QWidget):
                 if match:
                     self.lst.setCurrentRow(r)
                     break
+
+    def make_demo_pool(self):
+        """Учебный файл в рабочую папку + открыть маппинг. Загрузка — кнопкой."""
+        import csv as _csv
+        from tools.make_demo import ROWS as _DROWS
+        demo_path = str(Path(self._db_path).parent / "Демо-пул.csv")
+        with open(demo_path, "w", encoding="utf-8-sig", newline="") as f:
+            _csv.writer(f, delimiter=";").writerows(_DROWS)
+        self._reset_params(demo_path)
+        self.open_file(demo_path)
+        set_status(self.lbl_status,
+                   "демо-файл создан — проверь роли и жми «Загрузить в пул».",
+                   "ok")
 
     def pick_file(self):
         path, _ = QFileDialog.getOpenFileName(
