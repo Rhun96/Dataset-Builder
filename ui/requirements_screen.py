@@ -216,7 +216,9 @@ class RequirementsScreen(QWidget):
         self.spin_div.setRange(0, 0.99)
         self.spin_div.setSingleStep(0.05)
         self.spin_div.setValue(0)
-        self.spin_div.setToolTip("Не брать записи, слишком похожие на уже выбранные")
+        self.spin_div.setToolTip("Убирает тексты с высоким БУКВАЛЬНЫМ сходством "
+                                "(общие слова), а не смысловые дубли. "
+                                "0 — выкл, обычно 0.8–0.9.")
         divrow.addWidget(self.spin_div)
         self.cb_rarity = CheckBox("Редкие сочетания первыми")
         divrow.addWidget(self.cb_rarity)

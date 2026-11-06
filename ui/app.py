@@ -10,7 +10,6 @@ from qfluentwidgets import FluentIcon as FIF
 from qfluentwidgets import FluentWindow
 
 from ui.builds_screen import BuildsScreen
-from ui.knowledge_screen import KnowledgeScreen
 from ui.profile_screen import ProfileScreen
 from ui.requirements_screen import RequirementsScreen
 from ui.settings_screen import SettingsScreen
@@ -47,7 +46,6 @@ class MainWindow(FluentWindow):
             (ProfileScreen(db), FIF.VIEW, "1 · Профиль пула"),
             (RequirementsScreen(db), FIF.FILTER, "2 · Требования"),
             (BuildsScreen(db), FIF.SAVE, "3 · Сборка и экспорт"),
-            (KnowledgeScreen(db), FIF.SEARCH, "Изменения БЗ"),
         ):
             widget.setObjectName(text)
             self.addSubInterface(widget, icon, text)

@@ -64,8 +64,8 @@ def test_main_window(tmp_path):
     from ui.app import MainWindow, center_on_screen  # noqa: E402
     QApplication.instance() or QApplication([])
     w = MainWindow(str(tmp_path / "ws.sqlite"))
-    assert w.stackedWidget.count() == 6
-    names = [w.stackedWidget.widget(i).objectName() for i in range(6)]
+    assert w.stackedWidget.count() == 5
+    names = [w.stackedWidget.widget(i).objectName() for i in range(5)]
     assert names[1].startswith("1 ·") and names[2].startswith("2 ·")
     assert names[3].startswith("3 ·")
     center_on_screen(w)

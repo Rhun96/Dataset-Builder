@@ -12,7 +12,6 @@ from PySide6.QtWidgets import QApplication  # noqa: E402
 from core.requirements import SEED_HINT, SEED_LABEL  # noqa: E402
 from core.roles import EXT_ID, GROUP, MAIN  # noqa: E402
 from ui.builds_screen import BuildsScreen  # noqa: E402
-from ui.knowledge_screen import KnowledgeScreen  # noqa: E402
 from ui.requirements_screen import RequirementsScreen  # noqa: E402
 from ui.sources_screen import SourcesScreen, guess_role  # noqa: E402
 
@@ -255,15 +254,6 @@ def test_import_dialog_mapping(tmp_path):
     from core.roles import EXT_ID, MAIN  # noqa: E402
     assert m["Текст"] == MAIN and m["Номер"] == EXT_ID
     d.close()
-
-
-def test_knowledge_screen_smoke(tmp_path):
-    QApplication.instance() or QApplication([])
-    w = KnowledgeScreen(str(tmp_path / "ws.sqlite"))
-    assert w.tbl_changes.rowCount() == 0
-    assert w.btn_diff is not None and w.btn_tobuild is not None
-    assert w.txt_detail is not None
-    w.close()
 
 
 def test_simple_mode_defaults_and_autoseed(tmp_path):
