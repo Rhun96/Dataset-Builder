@@ -772,3 +772,66 @@ def test_formation_cards_select(tmp_path):
     assert w._formation == 'prop'
     assert w.tbl_q.rowCount() == 2
     w.close()
+
+
+def test_wizard_helpers(tmp_path):
+    from core.pool_import import import_source  # noqa: E402
+    from core.roles import GROUP, MAIN  # noqa: E402
+    from storage.database import connect  # noqa: E402
+    from ui.build_wizard import wizard_preview, wizard_profile  # noqa: E402
+    QApplication.instance() or QApplication([])
+    db = tmp_path / 'ws.sqlite'
+    p = tmp_path / 'a.csv'
+    p.write_text('Z;G' + chr(10) + 'a;A' + chr(10) + 'b;B' + chr(10)
+                 + 'c;A' + chr(10), encoding='utf-8-sig')
+    con = connect(db)
+    import_source(con, p, {'Z': MAIN, 'G': GROUP})
+    prof = wizard_profile("random", "", 2, 7)
+    out = wizard_preview(con, prof, None)
+    assert len(out["items"]) == 2 and out["short"] == 0
+    assert out["seed"] == 7
+    assert {r for r, _c in out["breakdown"]} <= {"a.csv"}
+    prof2 = wizard_profile("balanced", GROUP, 2, 7)
+    out2 = wizard_preview(con, prof2, GROUP)
+    assert len(out2["items"]) == 2
+    assert sum(1 for q in out2["quotas"] if q.kind == "exact") == 2
+    assert sum(q.amount for q in out2["quotas"] if q.kind == "exact") == 2
+    con.close()
+
+
+def test_wizard_dialog_flow(tmp_path):
+    from PySide6.QtWidgets import QWizard  # noqa: E402
+    from core.pool_import import import_source  # noqa: E402
+    from core.roles import GROUP, MAIN  # noqa: E402
+    from storage.database import connect, list_builds  # noqa: E402
+    from ui.build_wizard import WizardDialog  # noqa: E402
+    QApplication.instance() or QApplication([])
+    db = tmp_path / 'ws.sqlite'
+    p = tmp_path / 'a.csv'
+    p.write_text('Z;G' + chr(10) + 'a;A' + chr(10) + 'b;B' + chr(10), encoding='utf-8-sig')
+    con = connect(db)
+    import_source(con, p, {'Z': MAIN, 'G': GROUP})
+    con.close()
+    w = WizardDialog(str(db))
+    w.show()
+    w._intro.rbs["balanced"].setChecked(True)
+    assert w.nextId() == 1
+    w.next()
+    assert w.currentId() == 1
+    w._setup.spin_size.setValue(2)
+    assert w._setup.cmb_dim.findData(GROUP) >= 0
+    w.next()
+    assert w.currentId() == 2
+    assert "соберётся 2" in w._preview.lbl_sum.text()
+    assert w._preview.lst.count() == 2
+    seed1 = w._preview._seed
+    w._preview.btn_more.click()
+    assert w._preview._seed != seed1
+    w.button(QWizard.FinishButton).click()
+    assert w.result and w.result["action"] == "built"
+    con = connect(db)
+    try:
+        assert len(list_builds(con)) == 1
+    finally:
+        con.close()
+    w.close()

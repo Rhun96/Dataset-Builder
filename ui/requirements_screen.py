@@ -364,10 +364,15 @@ class RequirementsScreen(QWidget):
         ll.addLayout(fr)
 
         run = QHBoxLayout()
+        self.btn_wizard = PushButton("Мастер сборки…")
+        self.btn_wizard.setToolTip("Три ответа вместо настроек: случайная, "
+                                     "сбалансированная или вручную")
+        self.btn_wizard.clicked.connect(self.open_wizard)
         self.btn_check = PushButton("Проверить покрытие")
         self.btn_check.clicked.connect(self.check_coverage)
         self.btn_build = PrimaryPushButton("Собрать выборку")
         self.btn_build.clicked.connect(self.build)
+        run.addWidget(self.btn_wizard)
         run.addWidget(self.btn_check)
         run.addWidget(self.btn_build, 1)
         ll.addLayout(run)
@@ -1262,6 +1267,25 @@ class RequirementsScreen(QWidget):
                             keep_min=keep_min)
 
     # --- покрытие и сборка ---
+    def open_wizard(self):
+        from ui.build_wizard import WizardDialog
+        dlg = WizardDialog(self._db_path, self)
+        if dlg.exec() != dlg.DialogCode.Accepted:
+            return
+        res = dlg.result or {}
+        if res.get("action") == "advanced":
+            self.chk_adv.setChecked(True)
+            self.apply_formation("manual")
+            set_status(self.lbl_res, "мастер закрыт — настраивай вручную.", "info")
+        elif res.get("action") == "built":
+            self.refresh_novelty()
+            self.check_coverage()
+            set_status(self.lbl_res,
+                       f"мастер собрал {res['picked']} (id сборки {res['bid']}), "
+                       f"недобор {res.get('short', 0)}. Состав — на вкладке "
+                       "«3 · Сборка и экспорт».",
+                       "warn" if res.get("short", 0) else "ok")
+
     def check_coverage(self):
         try:
             prof = self._profile()
