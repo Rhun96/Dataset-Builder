@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 from qfluentwidgets import (
+    CheckBox,
     ComboBox,
     ListWidget,
     PrimaryPushButton,
@@ -82,7 +83,19 @@ class SourcesScreen(QWidget):
         top.addWidget(self.lbl_ws, 1)
         layout.addLayout(top)
 
-        params = QHBoxLayout()
+        filerow = QHBoxLayout()
+        self.chk_fileopts = CheckBox("Настроить параметры файла")
+        self.chk_fileopts.setToolTip("Лист, строка заголовка, кодировка, разделитель. "
+                                     "По умолчанию всё определяется само — открывай при проблемах.")
+        self.chk_fileopts.setChecked(False)
+        self.chk_fileopts.toggled.connect(self._toggle_fileopts)
+        filerow.addWidget(self.chk_fileopts)
+        filerow.addStretch(1)
+        layout.addLayout(filerow)
+
+        self.file_opts = QWidget()
+        params = QHBoxLayout(self.file_opts)
+        params.setContentsMargins(0, 0, 0, 0)
         params.addWidget(QLabel("Лист:"))
         self.cmb_sheet = ComboBox()
         self.cmb_sheet.setEnabled(False)
@@ -106,7 +119,8 @@ class SourcesScreen(QWidget):
             self.cmb_delim.addItem(label, userData=code)
         self.cmb_delim.currentIndexChanged.connect(lambda *_: self.reopen())
         params.addWidget(self.cmb_delim)
-        layout.addLayout(params)
+        layout.addWidget(self.file_opts)
+        self.file_opts.setVisible(False)
 
         mid = QHBoxLayout()
         self.lst = ListWidget()
@@ -265,6 +279,9 @@ class SourcesScreen(QWidget):
             self.tbl_map.setRowCount(0)
         self.refresh_sources()
         set_status(self.lbl_status, f"«{name}» удалён из пула.", "ok")
+
+    def _toggle_fileopts(self):
+        self.file_opts.setVisible(self.chk_fileopts.isChecked())
 
     def _reset_params(self, path: str):
         fmt = detect_format(path)

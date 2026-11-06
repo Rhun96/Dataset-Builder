@@ -575,6 +575,9 @@ def test_delete_source(tmp_path):
     w = SourcesScreen(str(db))
     assert hasattr(w, 'btn_del_src')
     assert w.lst.count() == 2
+    assert hasattr(w, 'chk_fileopts') and not w.file_opts.isVisibleTo(w)
+    w.chk_fileopts.setChecked(True)
+    assert w.file_opts.isVisibleTo(w)
     w.close()
     con = connect(db)
     srcs = list_sources(con)
@@ -675,11 +678,34 @@ def test_quick_filter_search(tmp_path):
     lst = w._ff_cols[GROUP].lst
     assert lst.count() == 2
     w.edit_ff_search.setText("возврат")
-    hidden = sum(1 for r in range(lst.count()) if lst.item(r).isHidden())
-    assert hidden == 1
+    assert w._ff_cols[GROUP].lst.count() == 1
+    assert "Возврат" in w._ff_cols[GROUP].lst.item(0).data(256)
     w.edit_ff_search.setText("")
-    hidden = sum(1 for r in range(lst.count()) if lst.item(r).isHidden())
-    assert hidden == 0
+    assert w._ff_cols[GROUP].lst.count() == 2
+    w.close()
+
+
+def test_quick_filter_search_all_values(tmp_path):
+    from core.pool_import import import_source  # noqa: E402
+    from core.roles import GROUP, MAIN  # noqa: E402
+    from storage.database import connect  # noqa: E402
+    QApplication.instance() or QApplication([])
+    db = tmp_path / 'ws.sqlite'
+    p = tmp_path / 'a.csv'
+    rows = chr(10).join(f"t{i};v{i:03d}" for i in range(250))
+    p.write_text('Z;G' + chr(10) + rows + chr(10), encoding='utf-8-sig')
+    con = connect(db)
+    import_source(con, p, {'Z': MAIN, 'G': GROUP})
+    con.close()
+    w = RequirementsScreen(str(db))
+    w._adv_on = True
+    assert w._ff_cols[GROUP].lst.count() == 200
+    raws = {w._ff_cols[GROUP].lst.item(r).data(256)
+            for r in range(w._ff_cols[GROUP].lst.count())}
+    assert "v249" not in raws
+    w.edit_ff_search.setText("v249")
+    lst = w._ff_cols[GROUP].lst
+    assert lst.count() == 1 and lst.item(0).data(256) == "v249"
     w.close()
 
 

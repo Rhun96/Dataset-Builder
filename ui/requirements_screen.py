@@ -33,7 +33,7 @@ from qfluentwidgets import (
 )
 
 from core.coverage_service import coverage
-from core.pool_profile import dim_distribution, dim_values, list_dims
+from core.pool_profile import dim_values, list_dims
 from core.requirements import (
     SEED_HINT,
     SEED_LABEL,
@@ -595,17 +595,28 @@ class RequirementsScreen(QWidget):
                 pass
 
     def _apply_ff_search(self):
-        needle = (self.edit_ff_search.text() or "").strip().casefold()
-        for card in getattr(self, "_ff_cols", {}).values():
-            try:
-                for r in range(card.lst.count()):
-                    it = card.lst.item(r)
-                    if it is None:
-                        continue
-                    raw = str(it.data(256) or "")
-                    it.setHidden(bool(needle) and needle not in raw.casefold())
-            except RuntimeError:  # noqa: BLE001
-                pass
+        self._rebuild_ff_cols(
+            (self.edit_ff_search.text() or "").strip() or None)
+
+    @staticmethod
+    def _ff_values(con, dim: str, needle: str | None) -> list[dict]:
+        """Значения измерения: топ-200 без поиска, до 500 совпадений с поиском.
+        Поиск идёт по всему измерению в БД, а не только по загруженным."""
+        if needle:
+            from core.normalize import norm_key as _nk
+            esc = _nk(needle).replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+            rows = con.execute(
+                "SELECT value_raw, value_norm, COUNT(*) c FROM pool_dim "
+                "WHERE dim=? AND is_missing=0 AND value_norm LIKE '%' || ? || '%' "
+                "ESCAPE '\\' GROUP BY value_norm ORDER BY c DESC, value_norm LIMIT 500",
+                (dim, esc)).fetchall()
+        else:
+            rows = con.execute(
+                "SELECT value_raw, value_norm, COUNT(*) c FROM pool_dim "
+                "WHERE dim=? AND is_missing=0 "
+                "GROUP BY value_norm ORDER BY c DESC, value_norm LIMIT 200",
+                (dim,)).fetchall()
+        return [{"raw": r[0], "count": r[2]} for r in rows]
 
     def _update_ff_badge(self, card):
         from PySide6.QtCore import Qt
@@ -649,6 +660,10 @@ class RequirementsScreen(QWidget):
                 pass
 
     def _fill_ff_vals(self):
+        self._rebuild_ff_cols(
+            (self.edit_ff_search.text() or "").strip() or None)
+
+    def _rebuild_ff_cols(self, needle: str | None):
         self._save_ff_checks()
         while self.ff_cols.count():
             item = self.ff_cols.takeAt(0)
@@ -666,7 +681,7 @@ class RequirementsScreen(QWidget):
         try:
             con = connect(self._db_path)
             try:
-                dists = {d: dim_distribution(con, d, limit=200) for d in dims}
+                dists = {d: self._ff_values(con, d, needle) for d in dims}
             finally:
                 con.close()
         except Exception:  # noqa: BLE001
@@ -676,7 +691,7 @@ class RequirementsScreen(QWidget):
             card = FilterColumnCard(dim, label_of.get(dim, dim))
             card._click_cb = lambda d=dim: self._select_data(self.cmb_ff_dim, d)
             card.lst.blockSignals(True)
-            for row in dists[dim]["top"]:
+            for row in dists[dim]:
                 raw = row["raw"] or ""
                 item = QListWidgetItem(f"{raw or '<пусто>'} — {row['count']}")
                 item.setData(256, row["raw"])
@@ -692,7 +707,6 @@ class RequirementsScreen(QWidget):
             self.ff_cols.addWidget(card, 1)
             self._ff_cols[dim] = card
         self._highlight_ff_cols()
-        self._apply_ff_search()
 
     def clear_filters(self):
         self.tbl_f.setRowCount(0)
