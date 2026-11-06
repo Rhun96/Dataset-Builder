@@ -1,0 +1,32 @@
+# Сборка и артефакты
+dist/
+build/
+__pycache__/
+*.pyc
+
+# Кэши инструментов
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Логи запусков
+*.log
+
+# Локальные базы (рабочая БД живёт в Документы\DatasetBuilderV2)
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+
+# Выгрузки пакетов, если появятся рядом с кодом
+exports/
+build_*/
+
+# Редакторы и ОС
+.vscode/
+.idea/
+Thumbs.db
+Desktop.ini
+
+# Виртуальные окружения
+.venv/
+venv/
