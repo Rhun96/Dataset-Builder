@@ -205,6 +205,10 @@ class SourcesScreen(QWidget):
         from storage.database import set_source_enabled
         if item is None or item.data(256) is None:
             return
+        try:
+            self.lst.setCurrentRow(self.lst.row(item))
+        except RuntimeError:  # noqa: BLE001
+            pass
         from PySide6.QtCore import Qt
         on = item.checkState() == Qt.Checked
         try:
@@ -223,6 +227,16 @@ class SourcesScreen(QWidget):
     def delete_selected(self):
         from storage.database import delete_source
         item = self.lst.currentItem()
+        if (item is None or item.data(256) is None) and self._current_file:
+            for r in range(self.lst.count()):
+                try:
+                    match = self.lst.item(r).data(257) == self._current_file
+                except RuntimeError:  # noqa: BLE001
+                    match = False
+                if match:
+                    self.lst.setCurrentRow(r)
+                    item = self.lst.item(r)
+                    break
         if item is None or item.data(256) is None:
             set_status(self.lbl_status, "выбери источник слева для удаления.", "warn")
             return

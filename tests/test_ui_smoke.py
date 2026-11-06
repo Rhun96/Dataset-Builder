@@ -392,6 +392,57 @@ def test_delete_source_flow(tmp_path, monkeypatch):
     w.close()
 
 
+def test_delete_via_checkbox_and_open_file(tmp_path, monkeypatch):
+    from core.pool_import import import_source  # noqa: E402
+    from core.roles import GROUP, MAIN  # noqa: E402
+    from storage.database import connect, list_sources  # noqa: E402
+    from ui.sources_screen import SourcesScreen  # noqa: E402
+    QApplication.instance() or QApplication([])
+    db = tmp_path / 'ws.sqlite'
+    for name in ('a.csv', 'b.csv'):
+        p = tmp_path / name
+        p.write_text('Z;G' + chr(10) + 'x;Y' + chr(10), encoding='utf-8-sig')
+        con = connect(db)
+        import_source(con, p, {'Z': MAIN, 'G': GROUP})
+        con.close()
+    w = SourcesScreen(str(db))
+    assert w.lst.currentItem() is None
+    # клик только по галочке: строка должна выделиться сама
+    w.toggle_selected(w.lst.item(1))
+    assert w.lst.currentItem() is w.lst.item(1)
+
+    class FakeBox:
+        Yes = 16384
+        No = 65536
+
+        @staticmethod
+        def question(*a, **k):
+            return FakeBox.Yes
+
+        @staticmethod
+        def warning(*a, **k):
+            return None
+
+    monkeypatch.setattr("ui.sources_screen.QMessageBox", FakeBox)
+    w.delete_selected()
+    con = connect(db)
+    try:
+        assert len(list_sources(con)) == 1
+    finally:
+        con.close()
+    # выделения нет, но открыт маппинг оставшегося файла — удаляем его
+    rest = list_sources(connect(db))
+    w._current_file = rest[0]["path"]
+    w.delete_selected()
+    con = connect(db)
+    try:
+        assert len(list_sources(con)) == 0
+    finally:
+        con.close()
+    assert w.lst.count() == 0
+    w.close()
+
+
 def test_pool_dialog_and_label(tmp_path):
     from core.pool_import import import_source  # noqa: E402
     from core.roles import GROUP, MAIN  # noqa: E402
