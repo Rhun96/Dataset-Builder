@@ -104,13 +104,30 @@ def wizard_export(con, bid: int, out_dir: str, fmts: tuple) -> dict:
 
 
 def apply_wizard_theme(dlg, dark: bool):
-    """Нативный QWizard не знает Fluent-тему — красим вручную."""
+    """Нативный QWizard не знает Fluent-тему. Фон — через палитру
+    (QSS фон страниц ModernStyle игнорирует), мелочи — через QSS."""
     if not dark:
         dlg.setStyleSheet("")
         return
+    from PySide6.QtGui import QColor, QPalette
+    pal = dlg.palette()
+    pal.setColor(QPalette.Window, QColor("#14161A"))
+    pal.setColor(QPalette.WindowText, QColor("#F2F2F2"))
+    pal.setColor(QPalette.Base, QColor("#23272E"))
+    pal.setColor(QPalette.Text, QColor("#F2F2F2"))
+    pal.setColor(QPalette.Button, QColor("#2A2F36"))
+    pal.setColor(QPalette.ButtonText, QColor("#F2F2F2"))
+    pal.setColor(QPalette.Highlight, QColor("#F5A524"))
+    pal.setColor(QPalette.HighlightedText, QColor("#14161A"))
+    for w in [dlg] + [dlg.page(i) for i in dlg.pageIds()]:
+        if w is None:
+            continue
+        w.setPalette(pal)
+        try:
+            w.setAutoFillBackground(True)
+        except RuntimeError:  # noqa: BLE001
+            pass
     dlg.setStyleSheet(
-        "QWizard { background: #14161A; }"
-        "QWizardPage { background: #14161A; }"
         "QLabel { color: #F2F2F2; }"
         "QLabel[hint=\"true\"] { color: #A8B0B8; }"
         "QRadioButton { color: #F2F2F2; }"

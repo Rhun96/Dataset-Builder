@@ -846,7 +846,11 @@ def test_wizard_dialog_flow(tmp_path):
     finally:
         con.close()
     apply_wizard_theme(w, True)
-    assert "#14161A" in w.styleSheet()
+    from PySide6.QtGui import QPalette  # noqa: E402
+    from PySide6.QtWidgets import QWizardPage  # noqa: E402
+    assert w.palette().color(QPalette.Window).name() == "#14161a"
+    assert all(isinstance(w.page(i), QWizardPage) and
+               w.page(i).autoFillBackground() for i in w.pageIds())
     apply_wizard_theme(w, False)
     assert w.styleSheet() == ""
     w.close()
