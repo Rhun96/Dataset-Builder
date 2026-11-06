@@ -112,6 +112,7 @@ def apply_wizard_theme(dlg, dark: bool):
         "QWizard { background: #14161A; }"
         "QWizardPage { background: #14161A; }"
         "QLabel { color: #F2F2F2; }"
+        "QLabel[hint=\"true\"] { color: #A8B0B8; }"
         "QRadioButton { color: #F2F2F2; }"
         "QCheckBox { color: #F2F2F2; }"
         "QSpinBox, QComboBox, QLineEdit, QListWidget {"
@@ -134,6 +135,7 @@ class _IntroPage(QWizardPage):
             rb.setToolTip(sub)
             lay.addWidget(rb)
             hint = QLabel(sub)
+            hint.setProperty("hint", True)
             hint.setProperty("hint", True)
             hint.setWordWrap(True)
             lay.addWidget(hint)
@@ -397,8 +399,13 @@ class WizardDialog(QWizard):
         self.setPage(1, self._setup)
         self.setPage(2, self._preview)
         self.setPage(3, self._done)
-        from ui.theme import saved_theme
-        apply_wizard_theme(self, saved_theme() == "dark")
+        try:
+            from qfluentwidgets import isDarkTheme
+            dark = bool(isDarkTheme())
+        except Exception:  # noqa: BLE001
+            from ui.theme import saved_theme
+            dark = saved_theme() == "dark"
+        apply_wizard_theme(self, dark)
 
     def intro_mode(self) -> str:
         return self._intro.mode()
