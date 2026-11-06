@@ -92,6 +92,17 @@ def wizard_build(con, name: str, preview: dict) -> int:
                       preview["short"])
 
 
+def wizard_export(con, bid: int, out_dir: str, fmts: tuple) -> dict:
+    """Предпроверка + выгрузка пакета. При блоке — ValueError с причинами."""
+    from core.precheck_service import precheck
+    from export.package_exporter import export_package
+    pc = precheck(con, bid)
+    if pc["status"] == "blocked":
+        msgs = "; ".join(c["message"] for c in pc["checks"] if c["level"] == "block")
+        raise ValueError(f"экспорт заблокирован: {msgs}")
+    return export_package(con, bid, out_dir, fmts)
+
+
 class _IntroPage(QWizardPage):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -208,6 +219,10 @@ class _PreviewPage(QWizardPage):
         self.btn_more.setToolTip("Тот же состав, другой seed")
         self.btn_more.clicked.connect(self._reroll)
         row.addWidget(self.btn_more)
+        self.btn_build = QPushButton("Собрать выборку")
+        self.btn_build.setToolTip("Сохранить как сборку и перейти к выгрузке")
+        self.btn_build.clicked.connect(self._save_and_next)
+        row.addWidget(self.btn_build)
         row.addStretch(1)
         lay.addLayout(row)
         self._seed = 0
@@ -223,6 +238,11 @@ class _PreviewPage(QWizardPage):
         self._seed = random.randrange(0, 1000000)
         self._run(wiz.intro_mode(), wiz.setup_dim(),
                   wiz.setup_size(), wiz.setup_name(), self._seed)
+
+    def _save_and_next(self):
+        wiz = self.wizard()
+        if wiz.save_current() is not None:
+            wiz.next()
 
     def _run(self, mode: str, dim: str | None, size: int, _name: str, seed: int):
         from storage.database import connect
@@ -259,6 +279,86 @@ class _PreviewPage(QWizardPage):
         return self.isComplete()
 
 
+class _DonePage(QWizardPage):
+    def __init__(self, db_path: str, parent=None):
+        super().__init__(parent)
+        self._db_path = db_path
+        self.setTitle("Готово — выгрузка пакета")
+        lay = QVBoxLayout(self)
+        self.lbl_done = QLabel("")
+        self.lbl_done.setWordWrap(True)
+        lay.addWidget(self.lbl_done)
+        fmtrow = QHBoxLayout()
+        from PySide6.QtWidgets import QCheckBox
+        self.cb_xlsx = QCheckBox("XLSX")
+        self.cb_xlsx.setChecked(True)
+        self.cb_csv = QCheckBox("CSV")
+        self.cb_jsonl = QCheckBox("JSONL")
+        self.cb_jsonl.setChecked(True)
+        for cb in (self.cb_xlsx, self.cb_csv, self.cb_jsonl):
+            fmtrow.addWidget(cb)
+        fmtrow.addStretch(1)
+        lay.addLayout(fmtrow)
+        dirrow = QHBoxLayout()
+        dirrow.addWidget(QLabel("Папка:"))
+        self.lbl_dir = QLabel(str(Path.home() / "Documents"
+                                  / "DatasetBuilderV2" / "exports"))
+        self.lbl_dir.setWordWrap(True)
+        dirrow.addWidget(self.lbl_dir, 1)
+        self.btn_dir = QPushButton("Папка…")
+        self.btn_dir.clicked.connect(self._pick_dir)
+        dirrow.addWidget(self.btn_dir)
+        lay.addLayout(dirrow)
+        self.btn_export = QPushButton("Выгрузить пакет")
+        self.btn_export.clicked.connect(self._do_export)
+        lay.addWidget(self.btn_export)
+        self.lbl_out = QLabel("")
+        self.lbl_out.setWordWrap(True)
+        lay.addWidget(self.lbl_out)
+
+    def initializePage(self) -> None:  # noqa: N802
+        wiz = self.wizard()
+        saved = wiz.saved or {}
+        self.lbl_done.setText(
+            f"Сборка #{saved.get('bid')}: собрано {saved.get('picked')} "
+            f"(недобор {saved.get('short', 0)}). Пакет — сюда или на вкладке "
+            "«3 · Сборка и экспорт».")
+        self.lbl_out.setText("")
+
+    def _pick_dir(self):
+        from PySide6.QtWidgets import QFileDialog
+        d = QFileDialog.getExistingDirectory(self, "Папка для пакета",
+                                             self.lbl_dir.text())
+        if d:
+            self.lbl_dir.setText(d)
+
+    def _do_export(self):
+        from storage.database import connect
+        wiz = self.wizard()
+        saved = wiz.saved or {}
+        if not saved.get("bid"):
+            self.lbl_out.setText("сначала собери выборку на предыдущем шаге.")
+            return
+        fmts = tuple(f for f, cb in (("xlsx", self.cb_xlsx), ("csv", self.cb_csv),
+                                     ("jsonl", self.cb_jsonl)) if cb.isChecked())
+        if not fmts:
+            self.lbl_out.setText("выбери хотя бы один формат.")
+            return
+        try:
+            con = connect(self._db_path)
+            try:
+                made = wizard_export(con, saved["bid"], self.lbl_dir.text(), fmts)
+            finally:
+                con.close()
+        except ValueError as e:
+            self.lbl_out.setText(str(e))
+            return
+        except Exception as e:  # noqa: BLE001
+            self.lbl_out.setText(f"ошибка: {e}")
+            return
+        self.lbl_out.setText("пакет готов: " + ", ".join(made.values()))
+
+
 class WizardDialog(QWizard):
     """Мастер сборки. После accept(): result = {'action': ...}."""
 
@@ -266,15 +366,18 @@ class WizardDialog(QWizard):
         super().__init__(parent)
         self._db_path = str(db_path)
         self.result: dict | None = None
+        self.saved: dict | None = None
         self.setWindowTitle("Мастер сборки")
         self.setWizardStyle(QWizard.ModernStyle)
         self.setOption(QWizard.NoBackButtonOnStartPage, True)
         self._intro = _IntroPage(self)
         self._setup = _SetupPage(self._db_path, self)
         self._preview = _PreviewPage(self._db_path, self)
+        self._done = _DonePage(self._db_path, self)
         self.setPage(0, self._intro)
         self.setPage(1, self._setup)
         self.setPage(2, self._preview)
+        self.setPage(3, self._done)
 
     def intro_mode(self) -> str:
         return self._intro.mode()
@@ -288,15 +391,11 @@ class WizardDialog(QWizard):
     def setup_name(self) -> str:
         return self._setup.edit_name.text().strip()
 
-    def accept(self) -> None:  # noqa: N802
-        mode = self.intro_mode()
-        if mode == "manual":
-            self.result = {"action": "advanced"}
-            super().accept()
-            return
+    def save_current(self) -> int | None:
+        """Сохранить текущее превью как сборку. Возвращает id или None."""
         pv = self._preview._preview
         if not pv or not pv.get("items"):
-            return
+            return None
         from storage.database import connect
         try:
             con = connect(self._db_path)
@@ -305,8 +404,22 @@ class WizardDialog(QWizard):
             finally:
                 con.close()
         except Exception:  # noqa: BLE001
+            return None
+        self.saved = {"bid": bid, "picked": len(pv["items"]),
+                      "short": pv["short"], "seed": pv["seed"]}
+        return bid
+
+    def accept(self) -> None:  # noqa: N802
+        mode = self.intro_mode()
+        if mode == "manual":
+            self.result = {"action": "advanced"}
+            super().accept()
             return
-        self.result = {"action": "built", "bid": bid,
-                       "picked": len(pv["items"]), "short": pv["short"],
-                       "seed": pv["seed"]}
+        if self.saved is None:
+            if self.save_current() is None:
+                return
+        self.result = {"action": "built", "bid": self.saved["bid"],
+                       "picked": self.saved["picked"],
+                       "short": self.saved["short"],
+                       "seed": self.saved["seed"]}
         super().accept()

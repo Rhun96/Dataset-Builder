@@ -831,6 +831,13 @@ def test_wizard_dialog_flow(tmp_path):
     seed1 = w._preview._seed
     w._preview.btn_more.click()
     assert w._preview._seed != seed1
+    w._preview.btn_build.click()
+    assert w.currentId() == 3
+    assert "Сборка #" in w._done.lbl_done.text()
+    w._done.lbl_dir.setText(str(tmp_path))
+    w._done.btn_export.click()
+    assert "пакет готов" in w._done.lbl_out.text()
+    assert (tmp_path / "dataset.jsonl").exists()
     w.button(QWizard.FinishButton).click()
     assert w.result and w.result["action"] == "built"
     con = connect(db)
