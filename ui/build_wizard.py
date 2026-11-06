@@ -143,8 +143,13 @@ def apply_wizard_theme(dlg, dark: bool):
 class _IntroPage(QWizardPage):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setTitle("Что собираем?")
         lay = QVBoxLayout(self)
+        head = QLabel("Что собираем?")
+        font = head.font()
+        font.setBold(True)
+        font.setPointSize(font.pointSize() + 2)
+        head.setFont(font)
+        lay.addWidget(head)
         self.grp = QButtonGroup(self)
         self.rbs: dict[str, QRadioButton] = {}
         for i, (code, title, sub) in enumerate(MODES):
@@ -172,8 +177,13 @@ class _SetupPage(QWizardPage):
     def __init__(self, db_path: str, parent=None):
         super().__init__(parent)
         self._db_path = db_path
-        self.setTitle("Параметры")
         lay = QVBoxLayout(self)
+        head = QLabel("Параметры")
+        font = head.font()
+        font.setBold(True)
+        font.setPointSize(font.pointSize() + 2)
+        head.setFont(font)
+        lay.addWidget(head)
         namerow = QHBoxLayout()
         namerow.addWidget(QLabel("Название:"))
         self.edit_name = QLineEdit()
@@ -244,8 +254,13 @@ class _PreviewPage(QWizardPage):
         super().__init__(parent)
         self._db_path = db_path
         self._preview: dict | None = None
-        self.setTitle("Предпросмотр (не сохранено)")
         lay = QVBoxLayout(self)
+        head = QLabel("Предпросмотр (не сохранено)")
+        font = head.font()
+        font.setBold(True)
+        font.setPointSize(font.pointSize() + 2)
+        head.setFont(font)
+        lay.addWidget(head)
         self.lbl_sum = QLabel("")
         self.lbl_sum.setWordWrap(True)
         lay.addWidget(self.lbl_sum)
@@ -321,8 +336,13 @@ class _DonePage(QWizardPage):
     def __init__(self, db_path: str, parent=None):
         super().__init__(parent)
         self._db_path = db_path
-        self.setTitle("Готово — выгрузка пакета")
         lay = QVBoxLayout(self)
+        head = QLabel("Готово — выгрузка пакета")
+        font = head.font()
+        font.setBold(True)
+        font.setPointSize(font.pointSize() + 2)
+        head.setFont(font)
+        lay.addWidget(head)
         self.lbl_done = QLabel("")
         self.lbl_done.setWordWrap(True)
         lay.addWidget(self.lbl_done)
