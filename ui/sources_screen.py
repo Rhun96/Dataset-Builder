@@ -156,6 +156,8 @@ class SourcesScreen(QWidget):
     # --- список источников ---
     def refresh_sources(self):
         from PySide6.QtCore import Qt
+        cur = self.lst.currentItem()
+        keep = cur.data(256) if cur is not None else None
         self.lst.blockSignals(True)
         self.lst.clear()
         try:
@@ -175,6 +177,15 @@ class SourcesScreen(QWidget):
             set_status(self.lbl_status, f"база недоступна: {e}", "block")
         finally:
             self.lst.blockSignals(False)
+        if keep is not None:
+            for r in range(self.lst.count()):
+                try:
+                    match = self.lst.item(r).data(256) == keep
+                except RuntimeError:  # noqa: BLE001
+                    match = False
+                if match:
+                    self.lst.setCurrentRow(r)
+                    break
 
     def pick_file(self):
         path, _ = QFileDialog.getOpenFileName(

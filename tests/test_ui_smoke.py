@@ -348,6 +348,50 @@ def test_source_toggle_and_profile_scope(tmp_path):
     pf.close()
 
 
+def test_delete_source_flow(tmp_path, monkeypatch):
+    from core.pool_import import import_source  # noqa: E402
+    from core.roles import GROUP, MAIN  # noqa: E402
+    from storage.database import connect, list_sources  # noqa: E402
+    from ui.sources_screen import SourcesScreen  # noqa: E402
+    QApplication.instance() or QApplication([])
+    db = tmp_path / 'ws.sqlite'
+    for name in ('a.csv', 'b.csv'):
+        p = tmp_path / name
+        p.write_text('Z;G' + chr(10) + 'x;Y' + chr(10), encoding='utf-8-sig')
+        con = connect(db)
+        import_source(con, p, {'Z': MAIN, 'G': GROUP})
+        con.close()
+    w = SourcesScreen(str(db))
+    assert w.lst.count() == 2
+    w.lst.setCurrentRow(0)
+    w.open_selected()
+    # open_file внутри зовёт refresh_sources — выделение обязано выжить,
+    # иначе «Удалить» говорит «выбери источник слева»
+    assert w.lst.currentItem() is not None and w.lst.currentItem().data(256)
+
+    class FakeBox:
+        Yes = 16384
+        No = 65536
+
+        @staticmethod
+        def question(*a, **k):
+            return FakeBox.Yes
+
+        @staticmethod
+        def warning(*a, **k):
+            return None
+
+    monkeypatch.setattr("ui.sources_screen.QMessageBox", FakeBox)
+    w.delete_selected()
+    con = connect(db)
+    try:
+        assert len(list_sources(con)) == 1
+    finally:
+        con.close()
+    assert w.lst.count() == 1
+    w.close()
+
+
 def test_pool_dialog_and_label(tmp_path):
     from core.pool_import import import_source  # noqa: E402
     from core.roles import GROUP, MAIN  # noqa: E402
