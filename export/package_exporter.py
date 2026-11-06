@@ -114,7 +114,8 @@ def export_package(con: sqlite3.Connection, build_id: int, out_dir: str | Path,
         w = csv.writer(f, delimiter=";")
         w.writerow(["Измерение", "Значение", "Нужно", "Доступно", "Дефицит"])
         for c in manifest["coverage"]:
-            w.writerow([c["dim"], c["value"], c["need"], c["avail"], c["deficit"]])
+            w.writerow([_safe(c["dim"]), _safe(c["value"]),
+                        c["need"], c["avail"], c["deficit"]])
     made["coverage"] = str(cp)
 
     rp = out / "selection_report.txt"
@@ -127,7 +128,8 @@ def export_package(con: sqlite3.Connection, build_id: int, out_dir: str | Path,
               f"алгоритм: {manifest['algo']}",
               f"Пул пригодных: {manifest['pool_total']}",
               "", "Источники:"]
-    lines += [f"  - {s['path']} (sha256 {s['sha256'][:12]}…)" for s in manifest["sources"]]
+    lines += [f"  - {Path(s['path']).name} "
+              f"(sha256 {s['sha256'][:12]}…)" for s in manifest["sources"]]
     lines += ["", "Покрытие:"]
     lines += [f"  - {c['dim']}={c['value']}: нужно {c['need']}, есть {c['avail']}"
               for c in manifest["coverage"]]

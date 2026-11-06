@@ -72,6 +72,20 @@ def test_export_roundtrip_and_formula_guard(tmp_path):
     con.close()
 
 
+def test_export_privacy_and_coverage_guard(tmp_path):
+    con, bid = _build(tmp_path, [Quota(dim=GROUP, value="=формула", kind="min", amount=1)])
+    made = export_package(con, bid, tmp_path / "out3", formats=("jsonl",))
+    assert set(made) >= {"manifest", "coverage", "report"}
+    m = json.loads((tmp_path / "out3" / "manifest.json").read_text(encoding="utf-8"))
+    assert m["sources"] and all("\\" not in s["path"] and "/" not in s["path"]
+                                for s in m["sources"])
+    cov = (tmp_path / "out3" / "coverage.csv").read_text(encoding="utf-8-sig")
+    assert "'=формула" in cov
+    rep = (tmp_path / "out3" / "selection_report.txt").read_text(encoding="utf-8")
+    assert str(tmp_path) not in rep and "p.csv" in rep
+    con.close()
+
+
 def test_build_note_in_manifest_and_report(tmp_path):
     from core.pool_import import import_source as _imp
     from core.roles import GROUP as _G, MAIN as _M

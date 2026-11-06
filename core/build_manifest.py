@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import sqlite3
 import sys
+from pathlib import Path
 
 from core.coverage_service import coverage
 from core.requirements import BuildProfile, profile_from_dict
@@ -56,7 +57,7 @@ def build_manifest(con: sqlite3.Connection, build_id: int) -> dict:
         "algo": f"sampling-v{ALGO_VERSION}",
         "python": sys.version.split()[0],
         "profile": profile_data,
-        "sources": [{"path": s["path"], "sha256": s["sha256"], "size": s["size"],
+        "sources": [{"path": Path(s["path"]).name, "sha256": s["sha256"], "size": s["size"],
                      "format": s["format"], "sheet": s["sheet"]} for s in sources],
         "pool_total": cov["eligible"],
         "coverage": cov["cells"],

@@ -212,14 +212,33 @@ def sample(con: sqlite3.Connection, profile: BuildProfile) -> dict:
                     break
                 _take(cid, "добрано случайно в рамках стратегии")
 
-    # максимумы: срезаем перебор (поздние по порядку добра)
-    for q in [x for x in profile.quotas if x.kind == "max"]:
-        members = set(quota_members(con, q, eligible))
+    # максимумы: срезаем перебор (поздние по порядку добра),
+    # затем добираем из пула вне урезанных ячеек, чтобы не терять объём
+    max_cells = [(set(quota_members(con, q, eligible)), q.amount)
+                 for q in profile.quotas if q.kind == "max"]
+    trimmed = False
+    for members, amount in max_cells:
         over = [c for c in chosen if c in members]
-        while len(over) > q.amount and over:
+        while len(over) > amount and over:
             victim = over.pop()  # последний добавленный из ячейки
             chosen.remove(victim)
             del reasons[victim]
+            trimmed = True
+    if trimmed:
+        counts = [sum(1 for c in chosen if c in members) for members, _ in max_cells]
+        for cid in pool:
+            if len(chosen) >= profile.target_size:
+                break
+            if cid in reasons:
+                continue
+            full = any(cid in members and counts[i] >= amount
+                       for i, (members, amount) in enumerate(max_cells))
+            if full:
+                continue
+            if _take(cid, "добрано после ограничения максимума"):
+                for i, (members, _amount) in enumerate(max_cells):
+                    if cid in members:
+                        counts[i] += 1
 
     new_count = len([c for c in chosen if c in new_ids])
     return {"items": chosen, "reasons": reasons,

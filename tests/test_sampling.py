@@ -107,6 +107,22 @@ def test_seed_labels_russian():
     assert "1, 2 и 3" in SEED_HINT
 
 
+def test_max_trims_and_refills(tmp_path):
+    con = _pool(tmp_path, rows=("a", "a", "a", "b", "b", "b"))
+    prof = BuildProfile(target_size=4, seed=3, mode="quota",
+                        quotas=[Quota(dim=GROUP, value="a", kind="max", amount=1)])
+    res = sample(con, prof)
+    assert len(res["items"]) == 4 and res["short"] == 0
+    got_a = 0
+    for c in res["items"]:
+        v = con.execute(
+            "SELECT value_raw FROM candidate_dim WHERE candidate_id=? AND dim=?",
+            (c, GROUP)).fetchone()[0]
+        got_a += (v == "a")
+    assert got_a <= 1
+    con.close()
+
+
 def test_combined_quota(tmp_path):
     p = tmp_path / "p.csv"
     p.write_text("З;Г;С\n" + "\n".join(
