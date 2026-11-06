@@ -808,7 +808,7 @@ def test_wizard_dialog_flow(tmp_path):
     from core.pool_import import import_source  # noqa: E402
     from core.roles import GROUP, MAIN  # noqa: E402
     from storage.database import connect, list_builds  # noqa: E402
-    from ui.build_wizard import WizardDialog  # noqa: E402
+    from ui.build_wizard import WizardDialog, apply_wizard_theme  # noqa: E402
     QApplication.instance() or QApplication([])
     db = tmp_path / 'ws.sqlite'
     p = tmp_path / 'a.csv'
@@ -845,4 +845,8 @@ def test_wizard_dialog_flow(tmp_path):
         assert len(list_builds(con)) == 1
     finally:
         con.close()
+    apply_wizard_theme(w, True)
+    assert "#14161A" in w.styleSheet()
+    apply_wizard_theme(w, False)
+    assert w.styleSheet() == ""
     w.close()

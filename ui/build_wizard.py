@@ -103,6 +103,25 @@ def wizard_export(con, bid: int, out_dir: str, fmts: tuple) -> dict:
     return export_package(con, bid, out_dir, fmts)
 
 
+def apply_wizard_theme(dlg, dark: bool):
+    """Нативный QWizard не знает Fluent-тему — красим вручную."""
+    if not dark:
+        dlg.setStyleSheet("")
+        return
+    dlg.setStyleSheet(
+        "QWizard { background: #14161A; }"
+        "QWizardPage { background: #14161A; }"
+        "QLabel { color: #F2F2F2; }"
+        "QRadioButton { color: #F2F2F2; }"
+        "QCheckBox { color: #F2F2F2; }"
+        "QSpinBox, QComboBox, QLineEdit, QListWidget {"
+        " background: #23272E; color: #F2F2F2;"
+        " border: 1px solid #3F3F3F; border-radius: 4px; }"
+        "QPushButton { background: #2A2F36; color: #F2F2F2;"
+        " border: 1px solid #3F3F3F; border-radius: 4px; padding: 4px 12px; }"
+        "QPushButton:hover { border-color: #F5A524; }")
+
+
 class _IntroPage(QWizardPage):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -378,6 +397,8 @@ class WizardDialog(QWizard):
         self.setPage(1, self._setup)
         self.setPage(2, self._preview)
         self.setPage(3, self._done)
+        from ui.theme import saved_theme
+        apply_wizard_theme(self, saved_theme() == "dark")
 
     def intro_mode(self) -> str:
         return self._intro.mode()
