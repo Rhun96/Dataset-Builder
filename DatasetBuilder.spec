@@ -17,7 +17,10 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=[],
+    excludes=["torch", "sklearn", "scipy", "matplotlib", "transformers",
+              "pandas", "pyarrow", "sympy", "numpy", "regex", "anyio",
+              "narwhals", "cloudpickle", "fsspec", "jinja2", "pytest",
+              "rich", "pygments", "py"],
     noarchive=False,
 )
 pyz = PYZ(a.pure)
