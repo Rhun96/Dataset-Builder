@@ -331,8 +331,13 @@ def delete_source(con: sqlite3.Connection, source_id: int) -> dict:
         """SELECT DISTINCT build_id FROM build_item WHERE candidate_id IN
            (SELECT id FROM candidate WHERE source_id=?)""", (source_id,)).fetchall()]
     if used:
-        nums = ", ".join(f"#{b}" for b in sorted(used))
-        raise ValueError(f"источник используется в сборках {nums} — сначала удали их")
+        marks = ",".join("?" for _ in used)
+        names = {r["id"]: r["name"] for r in con.execute(
+            f"SELECT id, name FROM build WHERE id IN ({marks})", (*used,)).fetchall()}
+        nums = ", ".join(f"#{b} «{names.get(b, '')}»" for b in sorted(used))
+        raise ValueError("источник используется в сборках "
+                         f"{nums} — сначала удали их на вкладке "
+                         "«3 · Сборка и экспорт», потом удаляй источник")
     cids = [r[0] for r in con.execute(
         "SELECT id FROM candidate WHERE source_id=?", (source_id,)).fetchall()]
     if cids:
