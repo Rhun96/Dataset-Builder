@@ -84,6 +84,9 @@ def test_req_filter_row(tmp_path):
         _Q(dim=GROUP, value="А", kind="min", amount=1, dim2=GROUP).validate()
     w.cmb_dedupe.setCurrentIndex(max(0, w.cmb_dedupe.findData("exact_new")))
     assert w._profile().dedupe == "exact_new"
+    w._adv_on = False
+    assert w._profile().dedupe == "exact_new"  # дубли читаем и в простом режиме
+    w._adv_on = True
     w.spin_size.setValue(500)
     w.fit_to_pool()
     assert w.spin_size.value() == 1  # фильтр оставил одну подходящую

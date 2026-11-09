@@ -506,7 +506,6 @@ class RequirementsScreen(QWidget):
             self.lbl_mode_t, self.cmb_mode,
             self.lbl_strat_t, self.cmb_strat, self.lbl_hint,
             self.lbl_div_t, self.spin_div, self.cb_rarity, self.lbl_mix_hint,
-            self.lbl_dd_t, self.cmb_dedupe,
             self.lbl_prof_t, self.cmb_profiles,
             self.btn_psave, self.btn_pload, self.btn_pdel, self.btn_pref,
             self.lbl_nov_t, self.lbl_share_t, self.spin_share, self.spin_new, self.btn_novref,
@@ -1269,7 +1268,7 @@ class RequirementsScreen(QWidget):
             # тонкости (новизна, разнообразие, доли, дубли) — в продвинутом
             mode = "quota" if quotas else "random"
             strat, seed, div, rare = "", 0, 0.0, False
-            dedupe = "off"
+            dedupe = self.cmb_dedupe.currentData() or "off"
             share, excl, new_min, keep, keep_min = 0.0, [], 0, None, 0
         return BuildProfile(target_size=self.spin_size.value(),
                             seed=seed,

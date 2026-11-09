@@ -27,6 +27,7 @@ QHeaderView::section { color: #F2F2F2; }
     return f"""
 * {{ font-family: "Segoe UI"; font-size: 9pt; }}
 QLabel[hint="true"] {{ color: #5D6B7A; }}
+{TIP_DARK if dark else TIP_LIGHT}
 TableWidget {{ gridline-color: {grid}; }}
 TableWidget::item {{
     border-right: 1px solid {grid};
@@ -49,6 +50,11 @@ STATUS_QSS = {
     "block": "background: #FDE7E9; color: #B10E1E; padding: 4px; border-radius: 4px;",
     "info": "",
 }
+
+TIP_DARK = ("QToolTip { background: #2A2F36; color: #F2F2F2; "
+            "border: 1px solid #F5A524; padding: 4px; }")
+TIP_LIGHT = ("QToolTip { background: #FFFBEA; color: #1B1B1B; "
+             "border: 1px solid #D5DDE5; padding: 4px; }")
 
 
 THEME_MODES = {"light": Theme.LIGHT, "dark": Theme.DARK, "auto": Theme.AUTO}
