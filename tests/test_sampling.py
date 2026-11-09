@@ -146,3 +146,40 @@ def test_combined_quota(tmp_path):
                                        dim2="custom:Сложность", value2="Y")])
     assert coverage(con, prof2)["cells"][0]["deficit"] == 3
     con.close()
+
+
+def _dupe_pool(tmp_path):
+    p = tmp_path / "d.csv"
+    p.write_text("З;Г\nодин;А\nодин;А\nодин;Б\nдва;Б\n", encoding="utf-8-sig")
+    con = connect(tmp_path / "w.sqlite")
+    import_source(con, p, {"З": MAIN, "Г": GROUP})
+    return con
+
+
+def test_dedupe_exact(tmp_path):
+    con = _dupe_pool(tmp_path)
+    prof = BuildProfile(target_size=4, seed=1, mode="random", dedupe="exact")
+    res = sample(con, prof)
+    fps = [con.execute("SELECT fingerprint FROM candidate WHERE id=?", (c,)).fetchone()[0]
+           for c in res["items"]]
+    assert len(set(fps)) == len(fps) and res.get("dupe_skipped", 0) > 0
+    con.close()
+
+
+def test_dedupe_exact_new_keeps_fresh_combo(tmp_path):
+    from core.roles import TOPIC  # noqa: E402
+    p = tmp_path / "d2.csv"
+    p.write_text("З;Г;Т\nодин;А;Л\nодин;А;Л\nодин;Б;С\nдва;Б;Л\n",
+                 encoding="utf-8-sig")
+    con = connect(tmp_path / "w2.sqlite")
+    import_source(con, p, {"З": MAIN, "Г": GROUP, "Т": TOPIC})
+    prof = BuildProfile(target_size=4, seed=1, mode="random", dedupe="exact_new")
+    res = sample(con, prof)
+    assert len(res["items"]) == 3 and res.get("dupe_skipped", 0) == 1
+    con.close()
+
+
+def test_dedupe_bad_mode(tmp_path):
+    import pytest
+    with pytest.raises(ValueError):
+        BuildProfile(target_size=1, seed=1, dedupe="sometimes").validate()

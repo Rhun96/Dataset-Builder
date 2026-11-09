@@ -168,6 +168,10 @@ class RequirementsScreen(QWidget):
         self.spin_size.setRange(1, 100000)
         self.spin_size.setValue(500)
         top.addWidget(self.spin_size)
+        self.btn_fit = PushButton("Сколько есть")
+        self.btn_fit.setToolTip("Не знаю сколько нужно — подогнать размер под подходящие записи")
+        self.btn_fit.clicked.connect(self.fit_to_pool)
+        top.addWidget(self.btn_fit)
         self.lbl_seed_t = QLabel(SEED_LABEL + ":")
         top.addWidget(self.lbl_seed_t)
         self.spin_seed = SpinBox()
@@ -222,6 +226,17 @@ class RequirementsScreen(QWidget):
         divrow.addWidget(self.spin_div)
         self.cb_rarity = CheckBox("Редкие сочетания первыми")
         divrow.addWidget(self.cb_rarity)
+        self.lbl_dd_t = QLabel("Дубли:")
+        self.lbl_dd_t.setToolTip("Точные дубли текста: оставить как есть, убрать все "
+                                 "повторы или брать повтор только с новыми значениями")
+        divrow.addWidget(self.lbl_dd_t)
+        self.cmb_dedupe = ComboBox()
+        for code, label in (("off", "как есть"), ("exact", "убрать повторы"),
+                            ("exact_new", "повтор только с новым")):
+            self.cmb_dedupe.addItem(label, userData=code)
+        self.cmb_dedupe.setToolTip("«Повтор только с новым» — дубль берём, если у него "
+                                   "есть значения измерений, ещё не встречавшиеся в наборе")
+        divrow.addWidget(self.cmb_dedupe)
         self.lbl_mix_hint = QLabel("Смешанный: всё сразу")
         self.lbl_mix_hint.setToolTip("Смешанный = квоты + разнообразие + редкость")
         self.lbl_mix_hint.setWordWrap(True)
@@ -491,6 +506,7 @@ class RequirementsScreen(QWidget):
             self.lbl_mode_t, self.cmb_mode,
             self.lbl_strat_t, self.cmb_strat, self.lbl_hint,
             self.lbl_div_t, self.spin_div, self.cb_rarity, self.lbl_mix_hint,
+            self.lbl_dd_t, self.cmb_dedupe,
             self.lbl_prof_t, self.cmb_profiles,
             self.btn_psave, self.btn_pload, self.btn_pdel, self.btn_pref,
             self.lbl_nov_t, self.lbl_share_t, self.spin_share, self.spin_new, self.btn_novref,
@@ -1170,7 +1186,7 @@ class RequirementsScreen(QWidget):
     def apply_profile(self, prof: BuildProfile):
         advanced = bool(prof.filters or prof.exclude_builds or prof.keep_build
                         or prof.keep_min or prof.min_new or prof.div_threshold
-                        or prof.rarity or prof.max_source_pct
+                        or prof.rarity or prof.dedupe != "off" or prof.max_source_pct
                         or prof.mode not in ("quota", "random") or prof.stratify_dim)
         self.chk_adv.blockSignals(True)
         self.chk_adv.setChecked(self.chk_adv.isChecked() or advanced)
@@ -1185,6 +1201,7 @@ class RequirementsScreen(QWidget):
         self._toggle_stratify()
         self.spin_div.setValue(prof.div_threshold)
         self.cb_rarity.setChecked(prof.rarity)
+        self._select_data(self.cmb_dedupe, prof.dedupe)
         self.tbl_q.setRowCount(0)
         for q in prof.quotas:
             self.add_quota_row(dim=q.dim, value=q.value, kind=q.kind, amount=q.amount,
@@ -1241,6 +1258,7 @@ class RequirementsScreen(QWidget):
             seed = self.spin_seed.value()
             div = self.spin_div.value()
             rare = self.cb_rarity.isChecked()
+            dedupe = self.cmb_dedupe.currentData() or "off"
             share = self.spin_share.value()
             excl = self._excluded_ids()
             new_min = self.spin_new.value()
@@ -1248,9 +1266,10 @@ class RequirementsScreen(QWidget):
             keep_min = self.spin_keep.value()
         else:
             # простой режим: размер + фильтры-п picked + баланс;
-            # тонкости (новизна, разнообразие, доли) — в продвинутом
+            # тонкости (новизна, разнообразие, доли, дубли) — в продвинутом
             mode = "quota" if quotas else "random"
             strat, seed, div, rare = "", 0, 0.0, False
+            dedupe = "off"
             share, excl, new_min, keep, keep_min = 0.0, [], 0, None, 0
         return BuildProfile(target_size=self.spin_size.value(),
                             seed=seed,
@@ -1258,6 +1277,7 @@ class RequirementsScreen(QWidget):
                             stratify_dim=strat,
                             div_threshold=div,
                             rarity=rare,
+                            dedupe=dedupe,
                             filters=filters,
                             quotas=quotas,
                             max_source_pct=share,
@@ -1505,6 +1525,8 @@ class RequirementsScreen(QWidget):
             extra += f" Сохранено старых: {len(res['kept'])}."
         if res.get("diversity_skipped"):
             extra += f" Отсеяно похожих: {res['diversity_skipped']}."
+        if res.get("dupe_skipped"):
+            extra += f" Отсеяно дублей: {res['dupe_skipped']}."
         set_status(self.lbl_res,
                      f"собрано {len(res['items'])} (id сборки {bid}), "
                      f"недобор {res.get('short', 0)}. Причины записаны к каждой записи." + extra,
@@ -1522,13 +1544,15 @@ class RequirementsScreen(QWidget):
         self.lbl_s_name.setText(name)
         mode = {"quota": "по квотам", "random": "случайный",
                 "stratified": "стратификация", "mixed": "смешанный"}.get(prof.mode, prof.mode)
+        dd_ru = {"off": "как есть", "exact": "без дублей",
+                 "exact_new": "только новое"}.get(prof.dedupe, prof.dedupe)
         self.lbl_s_cfg.setText(
             f"Цель {prof.target_size} · вариант {prof.seed} · {mode}\n"
             f"Квот {len(prof.quotas)} · фильтров {len(prof.filters)}\n"
             f"Доля источника {prof.max_source_pct or '—'}% · "
             f"новых ≥{prof.min_new or '—'}\n"
             f"Разнообразие {prof.div_threshold or 'выкл'} · "
-            f"редкие {'да' if prof.rarity else 'нет'}")
+            f"редкие {'да' if prof.rarity else 'нет'} · дубли: {dd_ru}")
         if cov is None:
             set_status(self.lbl_s_cov, "покрытие не проверено", "info")
             self.lbl_s_comp.setText("—")

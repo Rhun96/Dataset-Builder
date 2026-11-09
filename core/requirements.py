@@ -34,6 +34,7 @@ def profile_from_dict(data: dict) -> BuildProfile:
         keep_min=data.get("keep_min", 0),
         div_threshold=data.get("div_threshold", 0),
         rarity=data.get("rarity", False),
+        dedupe=data.get("dedupe", "off"),
     )
 
 
@@ -94,6 +95,8 @@ class BuildProfile:
     keep_min: int = 0
     div_threshold: float = 0  # 0 — выкл; иначе макс. сходство Жаккара 0.5–0.99
     rarity: bool = False  # сначала редкие сочетания значений
+    dedupe: str = "off"  # дубли: off — как есть, exact — убрать точные,
+    # exact_new — убрать точный дубль, только если он не несёт новых значений
 
     def validate(self):
         if self.target_size <= 0:
@@ -114,5 +117,7 @@ class BuildProfile:
             raise ValueError("порог ниже 0.5 выкинет почти всё — поставь 0.8–0.9")
         if self.min_new < 0 or self.min_new > self.target_size:
             raise ValueError("«не менее новых» — от 0 до цели")
+        if self.dedupe not in ("off", "exact", "exact_new"):
+            raise ValueError(f"неизвестный режим дублей {self.dedupe!r}")
         if self.keep_min < 0 or self.keep_min > self.target_size:
             raise ValueError("«сохранить» — от 0 до цели")

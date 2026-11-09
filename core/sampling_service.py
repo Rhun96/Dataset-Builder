@@ -129,15 +129,41 @@ def sample(con: sqlite3.Connection, profile: BuildProfile) -> dict:
     def _capped(cid: int) -> bool:
         return cap is not None and src_count[src_of.get(cid, -1)] >= cap
 
+    fps: dict[int, str] = {}
+    dimsets: dict[int, set] = {}
+    if profile.dedupe != "off":
+        fps = {r[0]: r[1] for r in
+               con.execute("SELECT id, fingerprint FROM pool_candidate").fetchall()}
+        for cid, dim, norm in con.execute(
+                "SELECT candidate_id, dim, value_norm FROM pool_dim").fetchall():
+            dimsets.setdefault(cid, set()).add((dim, norm))
+    seen_fp: set[str] = set()
+    seen_cells: set = set()
+    dupe_skipped: int = 0
+
     def _take(cid: int, why: str, count_src: bool = True, div: bool = True):
-        nonlocal div_skipped
+        nonlocal div_skipped, dupe_skipped, seen_fp, seen_cells
         if cid in reasons or cid not in eligible or _capped(cid):
             return False
+        if profile.dedupe != "off":
+            fp = fps.get(cid, "")
+            if fp and fp in seen_fp:
+                if profile.dedupe == "exact":
+                    dupe_skipped += 1
+                    return False
+                if not (dimsets.get(cid, set()) - seen_cells):
+                    dupe_skipped += 1
+                    return False
         if div and div_thr and _too_similar(cid):
             div_skipped += 1
             return False
         chosen.append(cid)
         reasons[cid] = why
+        if profile.dedupe != "off":
+            fp = fps.get(cid, "")
+            if fp:
+                seen_fp.add(fp)
+            seen_cells |= dimsets.get(cid, set())
         if count_src:
             src_count[src_of.get(cid, -1)] += 1
         return True
@@ -248,7 +274,7 @@ def sample(con: sqlite3.Connection, profile: BuildProfile) -> dict:
             "excluded_n": len(old), "new_count": new_count,
             "new_short": max(0, profile.min_new - new_count),
             "kept": kept, "kept_skipped": kept_skipped,
-            "diversity_skipped": div_skipped}
+            "diversity_skipped": div_skipped, "dupe_skipped": dupe_skipped}
 
 
 def _stratified_fill(con, profile, rng, eligible, new_ids, _take, _new_first, chosen):

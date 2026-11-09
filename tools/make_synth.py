@@ -67,7 +67,7 @@ TEMPLATES: dict[str, list[tuple[str, bool]]] = {
 
 def gen_rows(n: int, seed: int = SEED) -> list[tuple[str, str, str, str]]:
     rng = random.Random(seed)
-    cats, weights = zip(*CAT_WEIGHTS)
+    cats, weights = zip(*CAT_WEIGHTS, strict=False)
     rows = [("Запрос", "Категория", "Сложность", "ID")]
     for i in range(1, n + 1):
         cat = rng.choices(cats, weights)[0]
