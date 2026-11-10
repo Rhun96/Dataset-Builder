@@ -100,6 +100,47 @@ def parse_rules(text: str) -> dict[str, list[str]]:
     return rules
 
 
+def format_rules(rules: dict[str, list[str]]) -> str:
+    """{значение: [слова]} -> 'Значение: слово1, слово2; ...'."""
+    return "; ".join(f"{v}: {', '.join(ks)}" for v, ks in sorted(rules.items()))
+
+
+PACK_VERSION = 1
+
+
+def pack_to_json(name: str, dim: str, rules: dict[str, list[str]]) -> str:
+    return json.dumps({"version": PACK_VERSION, "name": name, "dim": dim,
+                       "rules": rules}, ensure_ascii=False, indent=2)
+
+
+def pack_from_json(blob: str) -> dict:
+    """Проверка файла пакета: имя, измерение, {значение: [слова]}."""
+    try:
+        data = json.loads(blob)
+    except ValueError as err:
+        raise ValueError("не JSON: выбери файл пакета (*.preclass.json)") from err
+    if not isinstance(data, dict):
+        raise ValueError("в файле нет объекта пакета")
+    name, dim, rules = data.get("name"), data.get("dim"), data.get("rules")
+    if not name or not isinstance(name, str):
+        raise ValueError("в пакете нет названия")
+    if not dim or not isinstance(dim, str):
+        raise ValueError("в пакете нет измерения")
+    if not isinstance(rules, dict) or not rules:
+        raise ValueError("в пакете нет правил")
+    clean: dict[str, list[str]] = {}
+    for value, kws in rules.items():
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError("пустое значение в правилах")
+        if not isinstance(kws, list) or not kws or \
+                not all(isinstance(k, str) and k.strip() for k in kws):
+            raise ValueError(f"у значения «{value}» нет слов")
+        clean[value.strip()] = [norm_key(k) for k in kws if norm_key(k).strip()]
+    if not clean:
+        raise ValueError("в пакете нет правил")
+    return {"name": name.strip()[:80], "dim": dim, "rules": clean}
+
+
 # --- наивный Байес ---
 
 def train_nb(rows: list[tuple[str, str]], alpha: float = 1.0,

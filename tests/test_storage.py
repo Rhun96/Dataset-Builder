@@ -60,7 +60,7 @@ def test_build_delete_cascade_and_refs(tmp_path):
 
 
 def test_backup_copy_and_rotation(tmp_path):
-    from storage.database import backup_now, connect as _connect
+    from storage.database import SCHEMA_VERSION, backup_now, connect as _connect
     db = tmp_path / "w.sqlite"
     con = _connect(db)
     con.execute("CREATE TABLE t(x TEXT)")
@@ -71,7 +71,7 @@ def test_backup_copy_and_rotation(tmp_path):
     con2 = sqlite3.connect(p1)
     try:
         assert con2.execute("SELECT COUNT(*) FROM t").fetchone()[0] == 0
-        assert con2.execute("PRAGMA user_version").fetchone()[0] == 8
+        assert con2.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION
     finally:
         con2.close()
     for _ in range(12):

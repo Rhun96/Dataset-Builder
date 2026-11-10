@@ -405,6 +405,31 @@ class RequirementsScreen(QWidget):
                                    "примеров нет. Формат: Значение: слово1, слово2; ...")
         self.edit_rules.setClearButtonEnabled(True)
         ll.addWidget(self.edit_rules)
+        packrow = QHBoxLayout()
+        packrow.addWidget(QLabel("Наборы:"))
+        self.cmb_packs = ComboBox()
+        self.cmb_packs.setToolTip("Сохранённые наборы правил для текущей колонки: "
+                                  "залил один раз — пользуйся, не нужен — убери")
+        packrow.addWidget(self.cmb_packs, 1)
+        self.btn_pack_save = PushButton("Сохранить")
+        self.btn_pack_save.setToolTip("Сохранить текст выше как именованный набор")
+        self.btn_pack_save.clicked.connect(self.save_pack)
+        self.btn_pack_load = PushButton("Взять")
+        self.btn_pack_load.setToolTip("Подставить выбранный набор в поле правил")
+        self.btn_pack_load.clicked.connect(self.load_pack)
+        self.btn_pack_del = PushButton("Убрать")
+        self.btn_pack_del.setToolTip("Удалить выбранный набор из библиотеки")
+        self.btn_pack_del.clicked.connect(self.delete_pack)
+        self.btn_pack_exp = PushButton("В файл")
+        self.btn_pack_exp.setToolTip("Выгрузить набор в JSON — отдать коллеге")
+        self.btn_pack_exp.clicked.connect(self.export_pack)
+        self.btn_pack_imp = PushButton("Из файла")
+        self.btn_pack_imp.setToolTip("Залить чужой набор из JSON-файла")
+        self.btn_pack_imp.clicked.connect(self.import_pack)
+        for b in (self.btn_pack_save, self.btn_pack_load, self.btn_pack_del,
+                  self.btn_pack_exp, self.btn_pack_imp):
+            packrow.addWidget(b)
+        ll.addLayout(packrow)
         self.lst_pc = ListWidget()
         self.lst_pc.setFixedHeight(90)
         ll.addWidget(self.lst_pc)
@@ -631,6 +656,7 @@ class RequirementsScreen(QWidget):
             self.cmb_ff_dim.setCurrentIndex(max(0, self.cmb_ff_dim.findData(keep)))
         self.cmb_ff_dim.blockSignals(False)
         self._fill_ff_vals()
+        self.refresh_packs()
 
     def _save_ff_checks(self):
         from PySide6.QtCore import Qt
@@ -1331,6 +1357,153 @@ class RequirementsScreen(QWidget):
             set_status(self.lbl_res, f"ошибка: {e}", "block")
             return
         self.refresh_profiles()
+
+    # --- наборы правил предклассификатора ---
+    def refresh_packs(self):
+        cur = self.cmb_packs.currentData() if hasattr(self, "cmb_packs") else None
+        dim = self.cmb_ff_dim.currentData() if hasattr(self, "cmb_ff_dim") else None
+        try:
+            from storage.database import list_preclass_packs
+            con = connect(self._db_path)
+            try:
+                packs = list_preclass_packs(con, dim)
+            finally:
+                con.close()
+        except Exception:  # noqa: BLE001
+            packs = []
+        self.cmb_packs.blockSignals(True)
+        self.cmb_packs.clear()
+        for p in packs:
+            self.cmb_packs.addItem(p["name"], userData=p["id"])
+        if cur:
+            idx = next((i for i in range(self.cmb_packs.count())
+                        if self.cmb_packs.itemData(i) == cur), -1)
+            self.cmb_packs.setCurrentIndex(max(0, idx))
+        self.cmb_packs.blockSignals(False)
+
+    def save_pack(self):
+        from core.preclassify import parse_rules
+        dim = self.cmb_ff_dim.currentData() if hasattr(self, "cmb_ff_dim") else None
+        if not dim:
+            set_status(self.lbl_cov, "выбери колонку в «Что берём».", "warn")
+            return
+        try:
+            rules = parse_rules(self.edit_rules.text())
+        except ValueError as e:
+            set_status(self.lbl_cov, str(e), "warn")
+            return
+        name, ok = QInputDialog.getText(self, "Набор правил", "Название:")
+        if not ok or not name.strip():
+            return
+        try:
+            from storage.database import save_preclass_pack
+            con = connect(self._db_path)
+            try:
+                pid = save_preclass_pack(con, name.strip()[:80], dim, rules)
+            finally:
+                con.close()
+        except Exception as e:  # noqa: BLE001
+            set_status(self.lbl_cov, f"ошибка: {e}", "block")
+            return
+        self.refresh_packs()
+        idx = next((i for i in range(self.cmb_packs.count())
+                    if self.cmb_packs.itemData(i) == pid), 0)
+        self.cmb_packs.setCurrentIndex(idx)
+        set_status(self.lbl_cov, f"набор «{name.strip()[:80]}» сохранён.", "ok")
+
+    def load_pack(self):
+        pid = self.cmb_packs.currentData()
+        if not pid:
+            set_status(self.lbl_cov, "выбери набор.", "warn")
+            return
+        try:
+            from core.preclassify import format_rules
+            from storage.database import load_preclass_pack
+            con = connect(self._db_path)
+            try:
+                pack = load_preclass_pack(con, pid)
+            finally:
+                con.close()
+        except ValueError as e:
+            set_status(self.lbl_cov, str(e), "warn")
+            return
+        except Exception as e:  # noqa: BLE001
+            set_status(self.lbl_cov, f"ошибка: {e}", "block")
+            return
+        self._select_data(self.cmb_ff_dim, pack["dim"])
+        self.edit_rules.setText(format_rules(pack["rules"]))
+        set_status(self.lbl_cov, f"набор «{pack['name']}» в поле — жми проверку.", "info")
+
+    def delete_pack(self):
+        pid = self.cmb_packs.currentData()
+        if not pid:
+            return
+        go = QMessageBox.question(self, "Убрать", "Удалить набор из библиотеки?",
+                                  QMessageBox.Yes | QMessageBox.No)
+        if go != QMessageBox.Yes:
+            return
+        try:
+            from storage.database import delete_preclass_pack
+            con = connect(self._db_path)
+            try:
+                delete_preclass_pack(con, pid)
+            finally:
+                con.close()
+        except Exception as e:  # noqa: BLE001
+            set_status(self.lbl_cov, f"ошибка: {e}", "block")
+            return
+        self.refresh_packs()
+
+    def export_pack(self):
+        pid = self.cmb_packs.currentData()
+        if not pid:
+            set_status(self.lbl_cov, "выбери набор.", "warn")
+            return
+        try:
+            from core.preclassify import pack_to_json
+            from storage.database import load_preclass_pack
+            con = connect(self._db_path)
+            try:
+                pack = load_preclass_pack(con, pid)
+            finally:
+                con.close()
+            blob = pack_to_json(pack["name"], pack["dim"], pack["rules"])
+        except Exception as e:  # noqa: BLE001
+            set_status(self.lbl_cov, f"ошибка: {e}", "block")
+            return
+        from PySide6.QtWidgets import QFileDialog
+        path, _flt = QFileDialog.getSaveFileName(
+            self, "Набор правил в файл", f"{pack['name']}.preclass.json",
+            "Наборы (*.preclass.json);;JSON (*.json)")
+        if not path:
+            return
+        try:
+            Path(path).write_text(blob, encoding="utf-8")
+        except OSError as e:
+            set_status(self.lbl_cov, f"не записать: {e}", "block")
+            return
+        set_status(self.lbl_cov, f"набор уехал в {Path(path).name}.", "ok")
+
+    def import_pack(self):
+        from PySide6.QtWidgets import QFileDialog
+        path, _flt = QFileDialog.getOpenFileName(
+            self, "Набор правил из файла", "",
+            "Наборы (*.preclass.json);;JSON (*.json)")
+        if not path:
+            return
+        try:
+            from core.preclassify import format_rules, pack_from_json
+            pack = pack_from_json(Path(path).read_text(encoding="utf-8-sig"))
+        except (ValueError, OSError) as e:
+            set_status(self.lbl_cov, str(e), "warn")
+            return
+        except Exception as e:  # noqa: BLE001
+            set_status(self.lbl_cov, f"ошибка: {e}", "block")
+            return
+        self._select_data(self.cmb_ff_dim, pack["dim"])
+        self.edit_rules.setText(format_rules(pack["rules"]))
+        set_status(self.lbl_cov,
+                   f"«{pack['name']}» из файла — проверь и жми «Сохранить».", "info")
 
     def apply_profile(self, prof: BuildProfile):
         advanced = bool(prof.filters or prof.exclude_builds or prof.keep_build

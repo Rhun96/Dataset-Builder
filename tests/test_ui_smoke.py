@@ -819,6 +819,40 @@ def test_preclass_buttons(tmp_path):
     w.close()
 
 
+def test_pack_save_load_delete(tmp_path, monkeypatch):
+    from core.pool_import import import_source  # noqa: E402
+    from core.roles import GROUP, MAIN  # noqa: E402
+    from storage.database import connect, list_preclass_packs  # noqa: E402
+    QApplication.instance() or QApplication([])
+    db = tmp_path / 'ws.sqlite'
+    p = tmp_path / 'a.csv'
+    p.write_text('Z;G' + chr(10) + 'a;A' + chr(10), encoding='utf-8-sig')
+    con = connect(db)
+    import_source(con, p, {'Z': MAIN, 'G': GROUP})
+    con.close()
+    w = RequirementsScreen(str(db))
+    w._adv_on = True
+    w.cmb_ff_dim.setCurrentIndex(max(0, w.cmb_ff_dim.findData(GROUP)))
+    w.edit_rules.setText("Возврат: вернуть; Доставка: посылка")
+    monkeypatch.setattr("ui.requirements_screen.QInputDialog.getText",
+                        lambda *a, **k: ("мой набор", True))
+    w.save_pack()
+    con = connect(db)
+    try:
+        assert [x["name"] for x in list_preclass_packs(con)] == ["мой набор"]
+    finally:
+        con.close()
+    assert w.cmb_packs.count() == 1
+    w.edit_rules.setText("")
+    w.load_pack()
+    assert "Возврат" in w.edit_rules.text()
+    monkeypatch.setattr("ui.requirements_screen.QMessageBox.question",
+                        lambda *a, **k: 16384)
+    w.delete_pack()
+    assert w.cmb_packs.count() == 0
+    w.close()
+
+
 def test_wizard_helpers(tmp_path):
     from core.pool_import import import_source  # noqa: E402
     from core.roles import GROUP, MAIN  # noqa: E402

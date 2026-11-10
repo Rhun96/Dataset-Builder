@@ -12,7 +12,7 @@ import sqlite3
 import time
 from pathlib import Path
 
-SCHEMA_VERSION = 8
+SCHEMA_VERSION = 9
 
 
 def file_state(path: str | Path) -> dict:
@@ -233,6 +233,19 @@ def _migrate(con: sqlite3.Connection, backup_first: bool = False):
           JOIN pool_candidate c ON c.id=d.candidate_id;
         """)
         con.execute("PRAGMA user_version=8")
+        con.commit()
+    if ver < 9:
+        con.executescript("""
+        CREATE TABLE IF NOT EXISTS preclass_pack (
+          id INTEGER PRIMARY KEY,
+          name TEXT NOT NULL UNIQUE,
+          dim TEXT NOT NULL DEFAULT '',
+          rules_json TEXT NOT NULL DEFAULT '{}',
+          created_at REAL NOT NULL DEFAULT 0,
+          updated_at REAL NOT NULL DEFAULT 0
+        );
+        """)
+        con.execute("PRAGMA user_version=9")
         con.commit()
 
 
@@ -477,6 +490,50 @@ def load_req_profile(con: sqlite3.Connection, pid: int) -> dict:
 
 def delete_req_profile(con: sqlite3.Connection, pid: int) -> None:
     con.execute("DELETE FROM req_profile WHERE id=?", (pid,))
+    con.commit()
+
+
+def save_preclass_pack(con: sqlite3.Connection, name: str, dim: str, rules: dict) -> int:
+    """Именованный набор правил (по имени — перезапись)."""
+    import json as _json
+    import time as _time
+    blob = _json.dumps(rules, ensure_ascii=False)
+    row = con.execute("SELECT id FROM preclass_pack WHERE name=?", (name,)).fetchone()
+    if row:
+        con.execute("UPDATE preclass_pack SET dim=?, rules_json=?, updated_at=? WHERE id=?",
+                    (dim, blob, _time.time(), row["id"]))
+        con.commit()
+        return row["id"]
+    cur = con.execute(
+        "INSERT INTO preclass_pack(name, dim, rules_json, created_at, updated_at) "
+        "VALUES (?,?,?,?,?)", (name, dim, blob, _time.time(), _time.time()))
+    con.commit()
+    return cur.lastrowid
+
+
+def list_preclass_packs(con: sqlite3.Connection, dim: str | None = None) -> list[dict]:
+    if dim:
+        rows = con.execute(
+            "SELECT id, name, dim, updated_at FROM preclass_pack WHERE dim=? ORDER BY name",
+            (dim,)).fetchall()
+    else:
+        rows = con.execute(
+            "SELECT id, name, dim, updated_at FROM preclass_pack ORDER BY name").fetchall()
+    return [dict(r) for r in rows]
+
+
+def load_preclass_pack(con: sqlite3.Connection, pid: int) -> dict:
+    import json as _json
+    row = con.execute(
+        "SELECT name, dim, rules_json FROM preclass_pack WHERE id=?", (pid,)).fetchone()
+    if row is None:
+        raise ValueError(f"набор правил {pid} не найден")
+    return {"name": row["name"], "dim": row["dim"],
+            "rules": _json.loads(row["rules_json"] or "{}")}
+
+
+def delete_preclass_pack(con: sqlite3.Connection, pid: int) -> None:
+    con.execute("DELETE FROM preclass_pack WHERE id=?", (pid,))
     con.commit()
 
 

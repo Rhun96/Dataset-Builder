@@ -73,3 +73,31 @@ def test_benchmark_needs_data(tmp_path):
             benchmark([])
     finally:
         con.close()
+
+
+def test_pack_crud_and_json(tmp_path):
+    from core.preclassify import format_rules, pack_from_json, pack_to_json, parse_rules
+    from storage.database import (delete_preclass_pack, list_preclass_packs,
+                                  load_preclass_pack, save_preclass_pack)
+    con = connect(tmp_path / "w.sqlite")
+    rules = parse_rules("Возврат: вернуть, возврат; Покупка: купить")
+    pid = save_preclass_pack(con, "базовый", GROUP, rules)
+    assert [p["name"] for p in list_preclass_packs(con, GROUP)] == ["базовый"]
+    assert list_preclass_packs(con, "topic:Тема") == []
+    back = load_preclass_pack(con, pid)
+    assert back["dim"] == GROUP and back["rules"] == rules
+    assert format_rules(rules) == "Возврат: вернуть, возврат; Покупка: купить"
+    blob = pack_to_json("базовый", GROUP, rules)
+    assert pack_from_json(blob)["rules"] == rules
+    save_preclass_pack(con, "базовый", GROUP, {"X": ["y"]})  # перезапись
+    assert load_preclass_pack(con, pid)["rules"] == {"X": ["y"]}
+    delete_preclass_pack(con, pid)
+    assert list_preclass_packs(con) == []
+    import pytest
+    with pytest.raises(ValueError):
+        pack_from_json('{"name": "x"}')
+    with pytest.raises(ValueError):
+        load_preclass_pack(con, pid)
+    with pytest.raises(ValueError):
+        parse_rules("без двоеточия")
+    con.close()
