@@ -809,6 +809,13 @@ def test_preclass_buttons(tmp_path):
     w.preclass_apply()
     assert "сухой прогон" in w.lbl_pc.text()
     assert w.lst_pc.count() >= 1
+    w.edit_rules.setText("Возвраты: возврат; Доставка: посылка")
+    w.preclass_apply()
+    assert "свои правила" in w.lbl_pc.text()
+    assert w.lst_pc.count() >= 1
+    w.edit_rules.setText("бред без двоеточия")
+    w.preclass_apply()
+    assert "двоеточия" in w.lbl_cov.text()
     w.close()
 
 

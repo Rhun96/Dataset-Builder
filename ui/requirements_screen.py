@@ -398,6 +398,13 @@ class RequirementsScreen(QWidget):
         self.lbl_pc = QLabel("")
         self.lbl_pc.setWordWrap(True)
         ll.addWidget(self.lbl_pc)
+        self.edit_rules = LineEdit()
+        self.edit_rules.setPlaceholderText(
+            "Свои правила: Возврат: вернуть, возврат; Покупка: купить, оформить")
+        self.edit_rules.setToolTip("Свои ключевые слова на случай, когда размеченных "
+                                   "примеров нет. Формат: Значение: слово1, слово2; ...")
+        self.edit_rules.setClearButtonEnabled(True)
+        ll.addWidget(self.edit_rules)
         self.lst_pc = ListWidget()
         self.lst_pc.setFixedHeight(90)
         ll.addWidget(self.lst_pc)
@@ -756,18 +763,32 @@ class RequirementsScreen(QWidget):
 
     def preclass_benchmark(self):
         """Качество на текущей колонке: обучение на пуле, проверка на пуле."""
-        from core.preclassify import benchmark, labeled_rows
+        from core.preclassify import _evaluate, _split, benchmark, labeled_rows
+        from core.preclassify import parse_rules, predict_rules
         dim = self.cmb_ff_dim.currentData() if hasattr(self, "cmb_ff_dim") else None
         if not dim:
             set_status(self.lbl_cov, "выбери колонку в «Что берём».", "warn")
             return
         try:
+            manual = parse_rules(self.edit_rules.text()) \
+                if self.edit_rules.text().strip() else None
+        except ValueError as e:
+            set_status(self.lbl_cov, str(e), "warn")
+            return
+        try:
             con = connect(self._db_path)
             try:
                 rows = labeled_rows(con, dim)
-                out = benchmark(rows) if len(rows) >= 5 else None
+                out = benchmark(rows, balanced=True) if len(rows) >= 5 else None
                 if out is None:
                     raise ValueError("размеченных записей меньше 5 — нечего проверять")
+                if manual:
+                    train, test = _split(rows)
+                    me = _evaluate(lambda t: predict_rules(manual, t), test)
+                    bad = [f"{lb} (r={m['r']})" for lb, m in sorted(me.items())
+                           if m["support"] > 0 and m["r"] < 0.5]
+                    out["report"].insert(-1, "Твои правила: худший recall — " +
+                                          (", ".join(bad) if bad else "все классы ≥ 0.5") + ".")
             finally:
                 con.close()
         except ValueError as e:
@@ -785,20 +806,51 @@ class RequirementsScreen(QWidget):
         set_status(self.lbl_cov, "бенчмарк готов — смотри разбор ниже.", "ok")
 
     def preclass_apply(self):
-        """Сухой прогон: предсказать колонку для записей без значения."""
+        """Сухой прогон: предсказать колонку для записей без значения.
+
+        Со своими правилами работает и без размеченных примеров,
+        иначе учим Байес на пуле (приоры выровнены).
+        """
         from collections import Counter
-        from core.preclassify import labeled_rows, predict_nb, train_nb
+        from core.preclassify import labeled_rows, parse_rules, predict_nb, predict_rules, train_nb
         dim = self.cmb_ff_dim.currentData() if hasattr(self, "cmb_ff_dim") else None
         if not dim:
             set_status(self.lbl_cov, "выбери колонку в «Что берём».", "warn")
             return
         try:
+            manual = parse_rules(self.edit_rules.text()) \
+                if self.edit_rules.text().strip() else None
+        except ValueError as e:
+            set_status(self.lbl_cov, str(e), "warn")
+            return
+
+        def _predict_nb(rows):
+            model = train_nb(rows, balanced=True)
+
+            def go(text):
+                pred, _s = predict_nb(model, text or "")
+                return pred
+            return go
+
+        def _predict_rules(manual_rules):
+            def go(text):
+                pred, _h = predict_rules(manual_rules, text or "")
+                return pred
+            return go
+
+        try:
             con = connect(self._db_path)
             try:
-                rows = labeled_rows(con, dim)
-                if len(rows) < 2:
-                    raise ValueError("нужно хотя бы 2 размеченные записи")
-                model = train_nb(rows)
+                if manual is None:
+                    rows = labeled_rows(con, dim)
+                    if len(rows) < 2:
+                        raise ValueError("нужно хотя бы 2 размеченные записи "
+                                         "или свои правила ниже")
+                    predict = _predict_nb(rows)
+                    engine = "Байес"
+                else:
+                    predict = _predict_rules(manual)
+                    engine = "свои правила"
                 missing = con.execute(
                     "SELECT c.id, c.main_raw FROM pool_candidate c "
                     "WHERE c.id NOT IN (SELECT candidate_id FROM pool_dim "
@@ -817,12 +869,12 @@ class RequirementsScreen(QWidget):
             return
         got: Counter = Counter()
         for _cid, raw in missing:
-            pred, _scores = predict_nb(model, raw or "")
+            pred = predict(raw or "")
             if pred:
                 got[pred] += 1
         self._preclass_dry = got
-        self.lbl_pc.setText(f"сухой прогон: размечено {sum(got.values())} из {len(missing)} "
-                            "пустых (в базу ничего не записано).")
+        self.lbl_pc.setText(f"сухой прогон ({engine}): размечено {sum(got.values())} "
+                            f"из {len(missing)} пустых (в базу ничего не записано).")
         self.lst_pc.clear()
         for raw, cnt in got.most_common(20):
             self.lst_pc.addItem(f"{raw} — {cnt}")

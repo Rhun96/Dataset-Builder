@@ -56,23 +56,58 @@ def extract_keywords(rows: list[tuple[str, str]], top_n: int = 8) -> dict[str, l
 
 
 def predict_rules(rules: dict[str, list[str]], text: str) -> tuple[str | None, int]:
-    """(значение с максимумом вхождений ключевых слов, число вхождений)."""
+    """(значение с максимумом вхождений ключевых слов, число вхождений).
+
+    Одно слово ищется среди токенов, фраза из нескольких слов — подстрокой
+    в нормализованном тексте.
+    """
     toks = set(tokens(text))
+    nt = norm_key(text or "")
     if not toks:
         return None, 0
     best: str | None = None
     best_hits = 0
     for value in sorted(rules):
-        hits = sum(1 for kw in rules[value] if kw in toks)
+        hits = sum(1 for kw in rules[value]
+                   if kw in toks or (" " in kw and kw in nt))
         if hits > best_hits:
             best, best_hits = value, hits
     return best, best_hits
 
 
+def parse_rules(text: str) -> dict[str, list[str]]:
+    """'Возврат: вернуть, возврат; Покупка: купить' -> {значение: [слова]}.
+
+    Слова приводятся к той же норме, что и токены текстов.
+    """
+    rules: dict[str, list[str]] = {}
+    for part in (text or "").split(";"):
+        part = part.strip()
+        if not part:
+            continue
+        if ":" not in part:
+            raise ValueError(f"нет двоеточия в «{part}» — "
+                             "формат: Значение: слово1, слово2; ...")
+        name, words = part.split(":", 1)
+        name = name.strip()
+        kws = [norm_key(w.strip()) for w in words.split(",")]
+        kws = [w for w in kws if w]
+        if not name or not kws:
+            raise ValueError(f"пусто в «{part}» — формат: Значение: слово1, слово2; ...")
+        rules[name] = kws
+    if not rules:
+        raise ValueError("пустые правила — пример: Возврат: вернуть, возврат")
+    return rules
+
+
 # --- наивный Байес ---
 
-def train_nb(rows: list[tuple[str, str]], alpha: float = 1.0) -> dict:
-    """Модель как dict (сериализуется в JSON): приоры + log P(токен|класс)."""
+def train_nb(rows: list[tuple[str, str]], alpha: float = 1.0,
+             balanced: bool = False) -> dict:
+    """Модель как dict (сериализуется в JSON): приоры + log P(токен|класс).
+
+    balanced=True — равные приоры классов: большинство не топит редкие.
+    """
     from collections import Counter
     docs: dict[str, list[list[str]]] = {}
     for text, value in rows:
@@ -82,11 +117,16 @@ def train_nb(rows: list[tuple[str, str]], alpha: float = 1.0) -> dict:
     vocab = sorted({t for ds in docs.values() for d in ds for t in d})
     vsize = len(vocab)
     total = sum(len(ds) for ds in docs.values())
-    model = {"labels": sorted(docs), "alpha": alpha,
+    n_labels = len(docs)
+    model = {"labels": sorted(docs), "alpha": alpha, "balanced": balanced,
              "log_prior": {}, "log_prob": {}, "vocab_size": vsize}
     for label in sorted(docs):
         ds = docs[label]
-        model["log_prior"][label] = math.log(len(ds) / total) if total else 0.0
+        if balanced and n_labels:
+            lp = math.log(1.0 / n_labels)
+        else:
+            lp = math.log(len(ds) / total) if total else 0.0
+        model["log_prior"][label] = lp
         cnt: Counter = Counter()
         for d in ds:
             cnt.update(d)
@@ -170,16 +210,18 @@ def _evaluate(predict, test: list[tuple[str, str]]) -> dict:
                                            for (t, p), n in worst]}
 
 
-def benchmark(rows: list[tuple[str, str]]) -> dict:
-    """NB против авто-правил на фиксированном сплите 80/20. Детерминирован."""
+def benchmark(rows: list[tuple[str, str]], balanced: bool = False) -> dict:
+    """NB + правила на фиксированном сплите 80/20. Детерминирован."""
     train, test = _split(rows)
     if not test:
         raise ValueError("мало размеченных записей для проверки")
-    model = train_nb(train)
+    model = train_nb(train, balanced=balanced)
     nb = _evaluate(lambda t: predict_nb(model, t), test)
     rules = extract_keywords(train)
     kw = _evaluate(lambda t: predict_rules(rules, t), test)
-    rep = [f"Проверено записей: {len(test)} из {len(rows)}."]
+    rep = [f"Проверено записей: {len(test)} из {len(rows)}.",
+           "Приоры выровнены: большинство не топит редкие." if balanced else
+           "Приоры по долям классов: большинство может топить редкие."]
     for name, res in (("Байес", nb), ("Правила", kw)):
         bad = [f"{lb} (r={m['r']})" for lb, m in sorted(res["per_class"].items())
                if m["support"] > 0 and m["r"] < 0.5]
