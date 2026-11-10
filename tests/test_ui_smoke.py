@@ -850,6 +850,12 @@ def test_pack_save_load_delete(tmp_path, monkeypatch):
                         lambda *a, **k: 16384)
     w.delete_pack()
     assert w.cmb_packs.count() == 0
+    ptxt = tmp_path / 'rules.txt'
+    ptxt.write_text("Возврат: вернуть, возврат", encoding="utf-8-sig")
+    monkeypatch.setattr("PySide6.QtWidgets.QFileDialog.getOpenFileName",
+                        lambda *a, **k: (str(ptxt), ""))
+    w.import_pack()
+    assert "Возврат" in w.edit_rules.text()
     w.close()
 
 

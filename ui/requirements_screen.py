@@ -1488,17 +1488,27 @@ class RequirementsScreen(QWidget):
         from PySide6.QtWidgets import QFileDialog
         path, _flt = QFileDialog.getOpenFileName(
             self, "Набор правил из файла", "",
-            "Наборы (*.preclass.json);;JSON (*.json)")
+            "Наборы (*.preclass.json);;Текст (*.txt);;JSON (*.json);;Все файлы (*)")
         if not path:
             return
         try:
-            from core.preclassify import format_rules, pack_from_json
-            pack = pack_from_json(Path(path).read_text(encoding="utf-8-sig"))
+            from core.preclassify import format_rules, pack_from_json, parse_rules
+            blob = Path(path).read_text(encoding="utf-8-sig")
+            if Path(path).suffix.lower() == ".txt":
+                rules = parse_rules(blob)
+                pack = {"name": Path(path).stem[:80],
+                        "dim": self.cmb_ff_dim.currentData(), "rules": rules}
+            else:
+                pack = pack_from_json(blob)
         except (ValueError, OSError) as e:
             set_status(self.lbl_cov, str(e), "warn")
             return
         except Exception as e:  # noqa: BLE001
             set_status(self.lbl_cov, f"ошибка: {e}", "block")
+            return
+        if not pack.get("dim"):
+            set_status(self.lbl_cov, "выбери колонку в «Что берём» — txt без измерения, "
+                                     "привязываю к текущей.", "warn")
             return
         self._select_data(self.cmb_ff_dim, pack["dim"])
         self.edit_rules.setText(format_rules(pack["rules"]))
