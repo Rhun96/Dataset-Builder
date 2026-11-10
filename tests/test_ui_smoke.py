@@ -856,6 +856,20 @@ def test_pack_save_load_delete(tmp_path, monkeypatch):
                         lambda *a, **k: (str(ptxt), ""))
     w.import_pack()
     assert "Возврат" in w.edit_rules.text()
+    import openpyxl
+    px = tmp_path / 'rules.xlsx'
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.append(["Значение", "Слова"])
+    ws.append(["Возврат", "вернуть, возврат"])
+    ws.append(["Покупка", "купить", "оформить"])
+    ws.append(["Мусор", None])
+    wb.save(px)
+    wb.close()
+    monkeypatch.setattr("PySide6.QtWidgets.QFileDialog.getOpenFileName",
+                        lambda *a, **k: (str(px), ""))
+    w.import_pack()
+    assert "Покупка" in w.edit_rules.text() and "оформить" in w.edit_rules.text()
     w.close()
 
 

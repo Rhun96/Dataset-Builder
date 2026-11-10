@@ -1488,17 +1488,23 @@ class RequirementsScreen(QWidget):
         from PySide6.QtWidgets import QFileDialog
         path, _flt = QFileDialog.getOpenFileName(
             self, "Набор правил из файла", "",
-            "Наборы (*.preclass.json);;Текст (*.txt);;JSON (*.json);;Все файлы (*)")
+            "Наборы (*.preclass.json);;Таблицы (*.xlsx);;Текст (*.txt);;"
+            "JSON (*.json);;Все файлы (*)")
         if not path:
             return
         try:
             from core.preclassify import format_rules, pack_from_json, parse_rules
-            blob = Path(path).read_text(encoding="utf-8-sig")
-            if Path(path).suffix.lower() == ".txt":
-                rules = parse_rules(blob)
+            suffix = Path(path).suffix.lower()
+            if suffix == ".txt":
+                rules = parse_rules(Path(path).read_text(encoding="utf-8-sig"))
                 pack = {"name": Path(path).stem[:80],
                         "dim": self.cmb_ff_dim.currentData(), "rules": rules}
+            elif suffix in (".xlsx", ".xlsm"):
+                pack = {"name": Path(path).stem[:80],
+                        "dim": self.cmb_ff_dim.currentData(),
+                        "rules": self._read_rules_xlsx(path)}
             else:
+                blob = Path(path).read_text(encoding="utf-8-sig")
                 pack = pack_from_json(blob)
         except (ValueError, OSError) as e:
             set_status(self.lbl_cov, str(e), "warn")
@@ -1507,13 +1513,54 @@ class RequirementsScreen(QWidget):
             set_status(self.lbl_cov, f"ошибка: {e}", "block")
             return
         if not pack.get("dim"):
-            set_status(self.lbl_cov, "выбери колонку в «Что берём» — txt без измерения, "
+            set_status(self.lbl_cov, "выбери колонку в «Что берём» — в файле нет измерения, "
                                      "привязываю к текущей.", "warn")
             return
         self._select_data(self.cmb_ff_dim, pack["dim"])
         self.edit_rules.setText(format_rules(pack["rules"]))
         set_status(self.lbl_cov,
                    f"«{pack['name']}» из файла — проверь и жми «Сохранить».", "info")
+
+    @staticmethod
+    def _read_rules_xlsx(path: str) -> dict[str, list[str]]:
+        """A — значение, остальные колонки — слова (можно через ;/,).
+
+        Первую строку пропускаем, если она похожа на шапку.
+        """
+        import re as _re
+        from openpyxl import load_workbook
+        from core.normalize import norm_key
+        wb = load_workbook(path, read_only=True, data_only=True)
+        try:
+            ws = wb[wb.sheetnames[0]]
+            agg: dict[str, list[str]] = {}
+            first = True
+            for row in ws.iter_rows(values_only=True):
+                if not row or row[0] is None:
+                    continue
+                name = str(row[0]).strip()
+                if first and name.casefold() in (
+                        "значение", "категория", "группа", "тема", "класс",
+                        "value", "label", "category"):
+                    first = False
+                    continue
+                first = False
+                kws: list[str] = []
+                for cell in row[1:]:
+                    if cell is None:
+                        continue
+                    kws += [k.strip() for k in _re.split(r"[;\n]+|,",
+                                                         str(cell)) if k.strip()]
+                kws = [norm_key(k) for k in kws if norm_key(k)]
+                if name and kws:
+                    agg.setdefault(name, [])
+                    agg[name] += [k for k in kws if k not in agg[name]]
+        finally:
+            wb.close()
+        if not agg:
+            raise ValueError("в xlsx нет пар «значение — слова»: первая колонка — "
+                             "значение, остальные — слова")
+        return agg
 
     def apply_profile(self, prof: BuildProfile):
         advanced = bool(prof.filters or prof.exclude_builds or prof.keep_build
