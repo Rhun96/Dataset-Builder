@@ -786,6 +786,32 @@ def test_formation_cards_select(tmp_path):
     w.close()
 
 
+def test_preclass_buttons(tmp_path):
+    from core.pool_import import import_source  # noqa: E402
+    from core.roles import GROUP, MAIN  # noqa: E402
+    from storage.database import connect  # noqa: E402
+    QApplication.instance() or QApplication([])
+    db = tmp_path / 'ws.sqlite'
+    p = tmp_path / 'a.csv'
+    rows = (chr(10).join(f"вернуть товар {i};Возвраты" for i in range(6))
+            + chr(10) + chr(10).join(f"где посылка {i};Доставка" for i in range(6))
+            + chr(10) + "ещё один возврат;\n")
+    p.write_text('Z;G' + chr(10) + rows, encoding='utf-8-sig')
+    con = connect(db)
+    import_source(con, p, {'Z': MAIN, 'G': GROUP})
+    con.close()
+    w = RequirementsScreen(str(db))
+    w._adv_on = True
+    w.cmb_ff_dim.setCurrentIndex(max(0, w.cmb_ff_dim.findData(GROUP)))
+    w.preclass_benchmark()
+    assert "Проверено" in w.lbl_pc.text()
+    assert w.lst_pc.count() == 2
+    w.preclass_apply()
+    assert "сухой прогон" in w.lbl_pc.text()
+    assert w.lst_pc.count() >= 1
+    w.close()
+
+
 def test_wizard_helpers(tmp_path):
     from core.pool_import import import_source  # noqa: E402
     from core.roles import GROUP, MAIN  # noqa: E402

@@ -378,6 +378,30 @@ class RequirementsScreen(QWidget):
         fr.addWidget(self.lbl_f_hint, 1)
         ll.addLayout(fr)
 
+        self.lbl_pc_t = QLabel("Предклассификатор (сухой прогон, в базу не пишем):")
+        self.lbl_pc_t.setToolTip("Обучается на размеченных записях пула, проверяет себя "
+                                 "и показывает, что предсказал бы пустым. "
+                                 "Решение о записи — позже.")
+        self.lbl_pc_t.setWordWrap(True)
+        ll.addWidget(self.lbl_pc_t)
+        pcr = QHBoxLayout()
+        self.btn_pc_bench = PushButton("Проверить качество")
+        self.btn_pc_bench.setToolTip("Бенчмарк по текущей колонке: recall по классам, путаницы")
+        self.btn_pc_bench.clicked.connect(self.preclass_benchmark)
+        self.btn_pc_apply = PushButton("Разметить пустые")
+        self.btn_pc_apply.setToolTip("Предсказать значение колонки для записей без него")
+        self.btn_pc_apply.clicked.connect(self.preclass_apply)
+        pcr.addWidget(self.btn_pc_bench)
+        pcr.addWidget(self.btn_pc_apply)
+        pcr.addStretch(1)
+        ll.addLayout(pcr)
+        self.lbl_pc = QLabel("")
+        self.lbl_pc.setWordWrap(True)
+        ll.addWidget(self.lbl_pc)
+        self.lst_pc = ListWidget()
+        self.lst_pc.setFixedHeight(90)
+        ll.addWidget(self.lst_pc)
+
         run = QHBoxLayout()
         self.btn_wizard = PushButton("Мастер сборки…")
         self.btn_wizard.setToolTip("Три ответа вместо настроек: случайная, "
@@ -729,6 +753,80 @@ class RequirementsScreen(QWidget):
             self.ff_cols.addWidget(card, 1)
             self._ff_cols[dim] = card
         self._highlight_ff_cols()
+
+    def preclass_benchmark(self):
+        """Качество на текущей колонке: обучение на пуле, проверка на пуле."""
+        from core.preclassify import benchmark, labeled_rows
+        dim = self.cmb_ff_dim.currentData() if hasattr(self, "cmb_ff_dim") else None
+        if not dim:
+            set_status(self.lbl_cov, "выбери колонку в «Что берём».", "warn")
+            return
+        try:
+            con = connect(self._db_path)
+            try:
+                rows = labeled_rows(con, dim)
+                out = benchmark(rows) if len(rows) >= 5 else None
+                if out is None:
+                    raise ValueError("размеченных записей меньше 5 — нечего проверять")
+            finally:
+                con.close()
+        except ValueError as e:
+            set_status(self.lbl_cov, str(e), "warn")
+            return
+        except Exception as e:  # noqa: BLE001
+            set_status(self.lbl_cov, f"ошибка: {e}", "block")
+            return
+        self.lbl_pc.setText("\n".join(out["report"]))
+        self.lst_pc.clear()
+        for lb, m in sorted(out["nb"]["per_class"].items()):
+            self.lst_pc.addItem(f"{lb}: recall {m['r']}, precision {m['p']} "
+                                f"(тест: {m['support']})")
+        self._highlight_ff_cols()
+        set_status(self.lbl_cov, "бенчмарк готов — смотри разбор ниже.", "ok")
+
+    def preclass_apply(self):
+        """Сухой прогон: предсказать колонку для записей без значения."""
+        from collections import Counter
+        from core.preclassify import labeled_rows, predict_nb, train_nb
+        dim = self.cmb_ff_dim.currentData() if hasattr(self, "cmb_ff_dim") else None
+        if not dim:
+            set_status(self.lbl_cov, "выбери колонку в «Что берём».", "warn")
+            return
+        try:
+            con = connect(self._db_path)
+            try:
+                rows = labeled_rows(con, dim)
+                if len(rows) < 2:
+                    raise ValueError("нужно хотя бы 2 размеченные записи")
+                model = train_nb(rows)
+                missing = con.execute(
+                    "SELECT c.id, c.main_raw FROM pool_candidate c "
+                    "WHERE c.id NOT IN (SELECT candidate_id FROM pool_dim "
+                    "WHERE dim=? AND is_missing=0)", (dim,)).fetchall()
+            finally:
+                con.close()
+        except ValueError as e:
+            set_status(self.lbl_cov, str(e), "warn")
+            return
+        except Exception as e:  # noqa: BLE001
+            set_status(self.lbl_cov, f"ошибка: {e}", "block")
+            return
+        if not missing:
+            self.lbl_pc.setText("пустых записей нет — размечать нечего.")
+            self.lst_pc.clear()
+            return
+        got: Counter = Counter()
+        for _cid, raw in missing:
+            pred, _scores = predict_nb(model, raw or "")
+            if pred:
+                got[pred] += 1
+        self._preclass_dry = got
+        self.lbl_pc.setText(f"сухой прогон: размечено {sum(got.values())} из {len(missing)} "
+                            "пустых (в базу ничего не записано).")
+        self.lst_pc.clear()
+        for raw, cnt in got.most_common(20):
+            self.lst_pc.addItem(f"{raw} — {cnt}")
+        set_status(self.lbl_cov, "сухой прогон готов.", "ok")
 
     def clear_filters(self):
         self.tbl_f.setRowCount(0)
